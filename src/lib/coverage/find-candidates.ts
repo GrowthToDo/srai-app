@@ -134,8 +134,20 @@ export async function findCandidatesForShift(
     });
   }
 
+  // Ordering rule: cost order, cheapest labor first.
+  // 1. Agency ALWAYS last — 2-3x base pay, more expensive than overtime (1.5x),
+  //    so it must never outrank internal staff even when they'd be on OT.
+  // 2. Never rank an overtime candidate above an eligible straight-time one —
+  //    reducing overtime cost is the core value proposition.
+  // 3. Within a bucket, the existing score decides (float keeps its tier bonus).
   const sortedCandidates = allCandidates
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      const aAgency = a.source === "agency" ? 1 : 0;
+      const bAgency = b.source === "agency" ? 1 : 0;
+      if (aAgency !== bAgency) return aAgency - bAgency;
+      if (a.isOvertime !== b.isOvertime) return a.isOvertime ? 1 : -1;
+      return b.score - a.score;
+    })
     .slice(0, 3);
 
   return { candidates: sortedCandidates, escalationStepsChecked };

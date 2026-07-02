@@ -357,15 +357,25 @@ export function getEscalationOptions(
   }
 
   // ── Sort and limit ───────────────────────────────────────────────────────
-  // Within each tier sort by score descending
+  // Ordering rule: never rank an overtime candidate above a straight-time one
+  // within the same group. Reducing overtime cost is the core value
+  // proposition, so wouldBeOvertime is the PRIMARY sort key (straight-time
+  // first) and the existing score is SECONDARY. The eligible-vs-ineligible
+  // partition is preserved — the OT rule applies WITHIN the eligible group and
+  // separately WITHIN the ineligible group.
+  const byOvertimeThenScore = (a: ReplacementCandidate, b: ReplacementCandidate) => {
+    if (a.wouldBeOvertime !== b.wouldBeOvertime) return a.wouldBeOvertime ? 1 : -1;
+    return b.score - a.score;
+  };
+
   const eligible = candidates
     .filter((c) => c.isEligible)
-    .sort((a, b) => b.score - a.score)
+    .sort(byOvertimeThenScore)
     .slice(0, MAX_ELIGIBLE);
 
   const ineligible = candidates
     .filter((c) => !c.isEligible)
-    .sort((a, b) => b.score - a.score)
+    .sort(byOvertimeThenScore)
     .slice(0, MAX_INELIGIBLE);
 
   return [...eligible, ...ineligible];

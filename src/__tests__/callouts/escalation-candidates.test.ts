@@ -378,6 +378,129 @@ describe("getEscalationOptions — charge nurse", () => {
   });
 });
 
+describe("getEscalationOptions — overtime-last ordering rule", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /**
+   * Multi-candidate setup with per-candidate weekly hours. Unlike setupQueues,
+   * weeklyRaw carries a distinct hours row per staff id so different candidates
+   * can be OT or non-OT independently.
+   *
+   * .get() order: shiftRow, calledOut, calledOutAssignment,
+   *   then per candidate: sched, (consecutive-day break = undefined)
+   * .all() order: allStaff, existingAssignments, nearbyRaw, weeklyRaw,
+   *   activeLeaves, then per candidate: weekendRows
+   */
+  function setupMulti(
+    candidates: Array<Record<string, unknown> & { id: string; hours: number }>
+  ) {
+    mockGet
+      .mockReturnValueOnce(makeShiftRow())                 // shiftRow
+      .mockReturnValueOnce({ role: "RN", icuCompetencyLevel: 3 }) // calledOut
+      .mockReturnValueOnce({ isChargeNurse: false });     // calledOutAssignment
+
+    // Per candidate: schedule bounds, then one undefined to break the
+    // consecutive-day walk.
+    for (let i = 0; i < candidates.length; i++) {
+      mockGet.mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" });
+      mockGet.mockReturnValueOnce(undefined);
+    }
+
+    const weeklyRaw = candidates
+      .filter((c) => c.hours > 0)
+      .map((c) => ({ staffId: c.id, status: "active", durationHours: c.hours }));
+
+    mockAll
+      .mockReturnValueOnce(candidates.map((c) => makeCandidate(c))) // allStaff
+      .mockReturnValueOnce([])         // existingAssignments
+      .mockReturnValueOnce([])         // nearbyRaw
+      .mockReturnValueOnce(weeklyRaw)  // weeklyRaw
+      .mockReturnValueOnce([]);        // activeLeaves
+
+    for (let i = 0; i < candidates.length; i++) {
+      mockAll.mockReturnValueOnce([]); // weekendRows per candidate
+    }
+  }
+
+  it("ranks an eligible non-OT per-diem above a higher-scored OT float", () => {
+    // Float scores higher on tier bonus (30 vs 20), but at 36h+12h it is OT.
+    // The per-diem at 24h stays straight-time and must therefore rank first.
+    // OT float is listed FIRST in allStaff to prove the sort reorders it below.
+    setupMulti([
+      { id: "float-ot", firstName: "Fay", lastName: "Float",
+        employmentType: "float", hours: 36 },        // 36 + 12 = 48 → OT
+      { id: "prn-straight", firstName: "Pat", lastName: "Perdiem",
+        employmentType: "per_diem", hours: 24 },      // 24 + 12 = 36 → not OT
+    ]);
+
+    const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
+    const eligible = result.filter((c) => c.isEligible);
+
+    expect(eligible.length).toBe(2);
+    // Straight-time per-diem ranks first despite the float's higher tier score.
+    expect(eligible[0].staffId).toBe("prn-straight");
+    expect(eligible[0].wouldBeOvertime).toBe(false);
+    expect(eligible[1].staffId).toBe("float-ot");
+    expect(eligible[1].wouldBeOvertime).toBe(true);
+  });
+
+  it("orders an all-OT eligible list by score (float tier still wins among OT)", () => {
+    // Both candidates cross 40h → both OT. Within the OT bucket the existing
+    // score ordering applies, so the float (higher tier bonus) leads.
+    setupMulti([
+      { id: "prn-ot", firstName: "Pat", lastName: "Perdiem",
+        employmentType: "per_diem", hours: 36 },      // OT
+      { id: "float-ot", firstName: "Fay", lastName: "Float",
+        employmentType: "float", hours: 36 },         // OT, higher tier score
+    ]);
+
+    const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
+    const eligible = result.filter((c) => c.isEligible);
+
+    expect(eligible.length).toBe(2);
+    expect(eligible.every((c) => c.wouldBeOvertime)).toBe(true);
+    // Float outscores per-diem, so it leads within the all-OT list.
+    expect(eligible[0].staffId).toBe("float-ot");
+    expect(eligible[1].staffId).toBe("prn-ot");
+  });
+
+  it("keeps float ahead of overtime-tier within the straight-time bucket", () => {
+    // Neither crosses 40h → both straight-time. Float's tier bonus (30) beats
+    // the overtime-tier full-timer's (10), so the float leads.
+    setupMulti([
+      { id: "ft-straight", firstName: "Ted", lastName: "Fulltime",
+        employmentType: "full_time", hours: 12 },     // 12 + 12 = 24 → not OT
+      { id: "float-straight", firstName: "Fay", lastName: "Float",
+        employmentType: "float", hours: 12 },         // 12 + 12 = 24 → not OT
+    ]);
+
+    const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
+    const eligible = result.filter((c) => c.isEligible);
+
+    expect(eligible.length).toBe(2);
+    expect(eligible.every((c) => !c.wouldBeOvertime)).toBe(true);
+    // Float wins on its tier bonus within the straight-time bucket.
+    expect(eligible[0].staffId).toBe("float-straight");
+    expect(eligible[1].staffId).toBe("ft-straight");
+  });
+
+  it("applies the OT rule within the eligible group without promoting it above ineligible partitioning", () => {
+    // One eligible OT candidate + one eligible non-OT candidate: non-OT leads,
+    // and both remain ahead of any ineligible candidate (partition preserved).
+    setupMulti([
+      { id: "float-ot", firstName: "Fay", lastName: "Float",
+        employmentType: "float", hours: 36 },         // OT, eligible
+      { id: "prn-straight", firstName: "Pat", lastName: "Perdiem",
+        employmentType: "per_diem", hours: 24 },      // non-OT, eligible
+    ]);
+
+    const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
+    // All returned here are eligible; the straight-time one is first overall.
+    expect(result[0].staffId).toBe("prn-straight");
+    expect(result[0].isEligible).toBe(true);
+  });
+});
+
 describe("getEscalationOptions — empty / edge cases", () => {
   beforeEach(() => vi.clearAllMocks());
 

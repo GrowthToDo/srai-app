@@ -299,6 +299,206 @@ describe("findCandidatesForShift — float candidate fields", () => {
   });
 });
 
+describe("findCandidatesForShift — overtime-last ordering rule", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function makePrnStaff(overrides: Record<string, unknown> = {}) {
+    return {
+      id:                    "prn-staff-001",
+      firstName:             "Pat",
+      lastName:              "Perdiem",
+      role:                  "RN",
+      employmentType:        "per_diem",
+      icuCompetencyLevel:    3,
+      isChargeNurseQualified: false,
+      reliabilityRating:     4,
+      isActive:              true,
+      homeUnit:              UNIT,
+      crossTrainedUnits:     null,
+      flexHoursYearToDate:   10,
+      ...overrides,
+    };
+  }
+
+  /**
+   * Queue one float candidate and one PRN candidate with independent weekly
+   * hours, so each can be OT or non-OT on its own.
+   *
+   * .get() order: shiftRow,
+   *   per float:  sched, (consecutive break),
+   *   per prn:    sched, (consecutive break)
+   * .all() order: floatStaff,
+   *   per float:  leaveRecords, existingAssignments, weekAssignments,
+   *               onCallThisWeek, adjacentAssignments, calloutReplacements,
+   *               weekendRows,
+   *   prnStaff,
+   *   per prn:    prnAvailability, leaveRecords, existingAssignments,
+   *               weekAssignments, onCallThisWeek, adjacentAssignments,
+   *               calloutReplacements, weekendRows,
+   *   regularStaff (empty)
+   */
+  function setupFloatAndPrn(floatHours: number, prnHours: number) {
+    mockGet
+      .mockReturnValueOnce(makeShiftRow())                                   // shiftRow
+      .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (float)
+      .mockReturnValueOnce(undefined)                                        // consec break (float)
+      .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (prn)
+      .mockReturnValueOnce(undefined);                                       // consec break (prn)
+
+    const floatWeek = floatHours > 0 ? [{ durationHours: floatHours }] : [];
+    const prnWeek   = prnHours   > 0 ? [{ durationHours: prnHours   }] : [];
+
+    mockAll
+      // float tier
+      .mockReturnValueOnce([makeFloatStaff()]) // floatStaff
+      .mockReturnValueOnce([])                 // leaveRecords
+      .mockReturnValueOnce([])                 // existingAssignments
+      .mockReturnValueOnce(floatWeek)          // weekAssignments
+      .mockReturnValueOnce([])                 // onCallThisWeek
+      .mockReturnValueOnce([])                 // adjacentAssignments
+      .mockReturnValueOnce([])                 // calloutReplacements
+      .mockReturnValueOnce([])                 // weekendRows
+      // prn tier
+      .mockReturnValueOnce([makePrnStaff()])   // prnStaff
+      .mockReturnValueOnce([{ availableDates: ["2026-03-10"] }]) // prnAvailability
+      .mockReturnValueOnce([])                 // leaveRecords
+      .mockReturnValueOnce([])                 // existingAssignments
+      .mockReturnValueOnce(prnWeek)            // weekAssignments
+      .mockReturnValueOnce([])                 // onCallThisWeek
+      .mockReturnValueOnce([])                 // adjacentAssignments
+      .mockReturnValueOnce([])                 // calloutReplacements
+      .mockReturnValueOnce([])                 // weekendRows
+      // overtime tier
+      .mockReturnValueOnce([]);                // regularStaff (empty)
+  }
+
+  it("ranks an eligible non-OT per-diem above a higher-scored OT float", async () => {
+    // Float outscores the per-diem on tier bonus (30 vs 20), but at 36h+12h it
+    // is OT. The per-diem at 12h stays straight-time and must rank first.
+    setupFloatAndPrn(36, 12); // float → 48h (OT), prn → 24h (not OT)
+
+    const { candidates } = await findCandidatesForShift(SHIFT_ID);
+    const real = candidates.filter((c) => c.staffId !== "agency");
+
+    expect(real.length).toBe(2);
+    expect(real[0].source).toBe("per_diem");
+    expect(real[0].isOvertime).toBe(false);
+    expect(real[1].source).toBe("float");
+    expect(real[1].isOvertime).toBe(true);
+  });
+
+  /**
+   * Queue one float candidate and one overtime-tier (full_time) candidate, each
+   * with independent weekly hours. Only float and overtime tiers can be OT in
+   * this engine (per-diem is always isOvertime=false), so an all-OT list needs
+   * these two tiers.
+   *
+   * .get() order: shiftRow,
+   *   per float:   sched, (consec break),
+   *   per regular: sched, (consec break)
+   * .all() order: floatStaff,
+   *   per float:   leaveRecords, existingAssignments, weekAssignments,
+   *                onCallThisWeek, adjacentAssignments, calloutReplacements,
+   *                weekendRows,
+   *   prnStaff (empty),
+   *   regularStaff,
+   *   per regular: leaveRecords, existingAssignments, weekAssignments,
+   *                onCallThisWeek, adjacentAssignments, calloutReplacements,
+   *                weekendRows
+   */
+  function setupFloatAndOvertime(floatHours: number, otHours: number) {
+    const regularStaff = [{
+      id:                    "ot-staff-001",
+      firstName:             "Drew",
+      lastName:              "Lee",
+      role:                  "RN",
+      employmentType:        "full_time",
+      icuCompetencyLevel:    3,
+      isChargeNurseQualified: false,
+      reliabilityRating:     4,
+      isActive:              true,
+      homeUnit:              UNIT,
+      crossTrainedUnits:     null,
+      flexHoursYearToDate:   10,
+    }];
+
+    mockGet
+      .mockReturnValueOnce(makeShiftRow())                                   // shiftRow
+      .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (float)
+      .mockReturnValueOnce(undefined)                                        // consec break (float)
+      .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (ot)
+      .mockReturnValueOnce(undefined);                                       // consec break (ot)
+
+    const floatWeek = floatHours > 0 ? [{ durationHours: floatHours }] : [];
+    const otWeek    = otHours    > 0 ? [{ durationHours: otHours    }] : [];
+
+    mockAll
+      // float tier
+      .mockReturnValueOnce([makeFloatStaff()]) // floatStaff
+      .mockReturnValueOnce([])                 // leaveRecords
+      .mockReturnValueOnce([])                 // existingAssignments
+      .mockReturnValueOnce(floatWeek)          // weekAssignments
+      .mockReturnValueOnce([])                 // onCallThisWeek
+      .mockReturnValueOnce([])                 // adjacentAssignments
+      .mockReturnValueOnce([])                 // calloutReplacements
+      .mockReturnValueOnce([])                 // weekendRows
+      // prn tier (empty)
+      .mockReturnValueOnce([])                 // prnStaff
+      // overtime tier
+      .mockReturnValueOnce(regularStaff)       // regularStaff
+      .mockReturnValueOnce([])                 // leaveRecords
+      .mockReturnValueOnce([])                 // existingAssignments
+      .mockReturnValueOnce(otWeek)             // weekAssignments
+      .mockReturnValueOnce([])                 // onCallThisWeek
+      .mockReturnValueOnce([])                 // adjacentAssignments
+      .mockReturnValueOnce([])                 // calloutReplacements
+      .mockReturnValueOnce([]);                // weekendRows
+  }
+
+  it("orders an all-OT list by score (float tier bonus still wins)", async () => {
+    // Both cross 40h → both OT. Within the OT bucket the score ordering holds,
+    // so the float (tier bonus 30) leads the overtime-tier full-timer (10).
+    setupFloatAndOvertime(36, 36); // both → 48h (OT)
+
+    const { candidates } = await findCandidatesForShift(SHIFT_ID);
+    const real = candidates.filter((c) => c.staffId !== "agency");
+
+    expect(real.length).toBe(2);
+    expect(real.every((c) => c.isOvertime)).toBe(true);
+    expect(real[0].source).toBe("float");
+    expect(real[1].source).toBe("overtime");
+  });
+
+  it("keeps float ahead of the overtime tier within the straight-time bucket", async () => {
+    // Neither crosses 40h → both straight-time. Float's tier bonus (30) beats
+    // the overtime-tier full-timer's (10, plus the +10 non-OT bonus = 20), so
+    // the float still leads within the straight-time bucket.
+    setupFloatAndOvertime(12, 12); // both → 24h (not OT)
+
+    const { candidates } = await findCandidatesForShift(SHIFT_ID);
+    const real = candidates.filter((c) => c.staffId !== "agency");
+
+    expect(real.length).toBe(2);
+    expect(real.every((c) => !c.isOvertime)).toBe(true);
+    expect(real[0].source).toBe("float");
+    expect(real[1].source).toBe("overtime");
+  });
+
+  it("never ranks agency above internal staff, even when every internal candidate is OT", async () => {
+    // Agency costs 2-3x base pay — more than overtime's 1.5x — so the agency
+    // pseudo-candidate must sort last even though it is itself straight-time.
+    // (Without the agency-last rule, the OT-first bucket sort would put
+    // "Request Agency Staff" at #1 in an all-OT field.)
+    setupFloatAndOvertime(36, 36); // both internal candidates → 48h (OT)
+
+    const { candidates } = await findCandidatesForShift(SHIFT_ID);
+
+    expect(candidates.length).toBe(3);
+    expect(candidates[0].source).toBe("float");
+    expect(candidates[2].staffId).toBe("agency");
+  });
+});
+
 describe("findCandidatesForShift — overtime tier: OT reasons removed", () => {
   beforeEach(() => vi.clearAllMocks());
 
