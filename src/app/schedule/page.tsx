@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FirstRunNudge } from "@/components/ui/first-run-nudge";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 import {
   Dialog,
   DialogContent,
@@ -141,10 +141,7 @@ export default function SchedulePage() {
         <Button onClick={openDialog}>New Schedule</Button>
       </div>
 
-      <FirstRunNudge
-        show={schedules.length > 0}
-        message="Open a schedule card below — then generate and publish it from the schedule page."
-      />
+      <GuideNudge />
 
       {schedules.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-muted p-16 text-center">

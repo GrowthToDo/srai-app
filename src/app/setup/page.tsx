@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -54,6 +55,7 @@ interface ImportResult {
 }
 
 export default function SetupPage() {
+  const { guide } = useOnboarding();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -150,7 +152,9 @@ export default function SetupPage() {
       if (data.success) {
         setPreview(null);
         setSelectedFile(null);
-        // Advance the sidebar next-step beacon without a navigation.
+        // A re-import starts the first cycle over: reset the guide flags first,
+        // then refresh the counts so the beacon/checklist re-derive from scratch.
+        window.dispatchEvent(new Event("onboarding-reset"));
         window.dispatchEvent(new Event("onboarding-refresh"));
       }
     } catch (error) {
@@ -380,8 +384,16 @@ export default function SetupPage() {
                     <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
                   </span>
                   <span>
-                    <b>What&apos;s next:</b> follow the pulsing green dot in the sidebar — it always
-                    points to your next step. Right now: create a schedule period.
+                    {guide?.stage === "S1" ? (
+                      <>
+                        <b>What&apos;s next:</b> review your staff, then create a schedule period.
+                      </>
+                    ) : (
+                      <>
+                        <b>What&apos;s next:</b> follow the pulsing green dot in the sidebar — it always
+                        points to your next step. Right now: create a schedule period.
+                      </>
+                    )}
                   </span>
                 </div>
                 <div className="flex flex-col items-center gap-2">

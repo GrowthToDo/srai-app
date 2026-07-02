@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FirstRunNudge } from "@/components/ui/first-run-nudge";
+import { GuideNudge } from "@/components/ui/guide-nudge";
+import { GuideDot } from "@/components/ui/guide-dot";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
 import { AssignmentDialog } from "@/components/schedule/assignment-dialog";
 import { ShiftViolationsModal } from "@/components/schedule/shift-violations-modal";
@@ -65,6 +67,7 @@ interface EvalResult {
 export default function ScheduleBuilderPage() {
   const params = useParams();
   const router = useRouter();
+  const { guide } = useOnboarding();
   const scheduleId = params.id as string;
 
   const [schedule, setSchedule] = useState<ScheduleData | null>(null);
@@ -285,8 +288,9 @@ export default function ScheduleBuilderPage() {
             variant="ghost"
             size="sm"
             onClick={() => router.push(`/scenarios?scheduleId=${scheduleId}`)}
-            className="bg-white text-primary hover:bg-white/90 font-medium shadow-sm"
+            className="relative bg-white text-primary hover:bg-white/90 font-medium shadow-sm"
           >
+            <GuideDot show={guide?.dot === "generate"} label="Suggested next step" />
             Generate Schedule
           </Button>
           <Button
@@ -317,8 +321,9 @@ export default function ScheduleBuilderPage() {
                       onClick={handlePublish}
                       disabled={publishing || disabledByViolations}
                       title={disabledByViolations ? `Fix ${evaluation.hardViolations.length} compliance issue${evaluation.hardViolations.length !== 1 ? "s" : ""} before publishing` : undefined}
-                      className="bg-white/90 text-primary hover:bg-white font-medium shadow-sm disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-primary/40 disabled:shadow-none"
+                      className="relative bg-white/90 text-primary hover:bg-white font-medium shadow-sm disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-primary/40 disabled:shadow-none"
                     >
+                      <GuideDot show={guide?.dot === "publish"} label="Suggested next step" />
                       {publishing ? "Publishing…" : (
                         <>
                           {disabledByViolations && (
@@ -353,14 +358,7 @@ export default function ScheduleBuilderPage() {
         </div>
       </div>
 
-      <FirstRunNudge
-        show={!!schedule && schedule.status !== "published"}
-        message={
-          totalAssignments === 0
-            ? "Click Generate Schedule (top right) — the AI fills the grid in about a minute."
-            : "Review the grid below, then hit Publish (top right) to make the schedule official."
-        }
-      />
+      <GuideNudge />
 
       {/* Summary cards */}
       <div className="mb-6 grid grid-cols-3 gap-4">

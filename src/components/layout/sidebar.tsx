@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
 
 interface NotificationCounts {
   pendingLeaveCount: number;
@@ -11,29 +12,6 @@ interface NotificationCounts {
   openCallouts: number;
   pendingSwapsCount: number;
   prnMissingCount: number;
-  onboarding?: {
-    staffCount: number;
-    unitsCount: number;
-    scheduleCount: number;
-    generatedCount: number;
-    publishedCount: number;
-  };
-}
-
-/**
- * "Next step" guide beacon: until the manager completes one full cycle
- * (first published schedule), a pulsing dot marks the nav item to visit next.
- * Moves with real progress: Setup → Schedule (create) → Schedule Variants
- * (generate) → Schedule (publish). Returns null once the cycle is done.
- */
-function nextStepHref(c: NotificationCounts | null): string | null {
-  const o = c?.onboarding;
-  if (!o) return null;
-  if (o.publishedCount > 0) return null; // first full cycle complete — retire the beacon
-  if (o.staffCount === 0 || o.unitsCount === 0) return "/setup";
-  if (o.scheduleCount === 0) return "/schedule";
-  if (o.generatedCount === 0) return "/scenarios"; // generate the schedule next
-  return "/schedule"; // generated → review + publish on the schedule page
 }
 
 const BADGE_COUNTS: Record<string, (c: NotificationCounts) => number> = {
@@ -144,9 +122,14 @@ const icons: Record<string, () => React.ReactNode> = {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { guide } = useOnboarding();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [counts, setCounts] = useState<NotificationCounts | null>(null);
+
+  // Next-step beacon target comes from the shared guide; suppressed once the
+  // manager dismisses the first-cycle guidance.
+  const beaconHref = guide && !guide.dismissed ? guide.beaconHref : null;
 
   useEffect(() => {
     fetch("/api/notifications")
@@ -227,7 +210,7 @@ export function Sidebar() {
                   >
                     {Icon && <Icon />}
                     <span className="flex-1">{item.label}</span>
-                    {!isActive && item.href === nextStepHref(counts) && (
+                    {!isActive && item.href === beaconHref && (
                       <span
                         className="relative flex h-3.5 w-3.5 items-center justify-center"
                         title="Suggested next step"

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FirstRunNudge } from "@/components/ui/first-run-nudge";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 import {
   Select,
   SelectContent,
@@ -199,15 +199,7 @@ function ScenariosPageContent() {
         </p>
       </div>
 
-      <FirstRunNudge
-        message={
-          isGenerating
-            ? "Generation is running — when it finishes, compare the variants below, then publish from the Schedule page."
-            : "Select your schedule above and click Generate Schedule. Afterwards, publish it from the Schedule page."
-        }
-        href="/schedule"
-        linkLabel="Go to Schedule"
-      />
+      <GuideNudge />
 
       <div className="mb-6 flex items-center gap-4">
         <Select value={selectedScheduleId} onValueChange={setSelectedScheduleId}>

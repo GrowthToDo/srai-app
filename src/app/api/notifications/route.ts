@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { staffLeave, openShift, callout, shiftSwapRequest, staff, prnAvailability, unit, schedule, assignment } from "@/db/schema";
-import { eq, or, count, countDistinct, and } from "drizzle-orm";
+import { eq, or, count, countDistinct, and, ne, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -55,6 +55,30 @@ export async function GET() {
     .from(assignment)
     .get();
 
+  // Newest non-archived schedule drives the first-cycle guide's S3/S4 stages.
+  // hasAssignments keys on *this* schedule's own rows, so a fresh empty schedule
+  // stays at "generate" even if an older schedule already has assignments.
+  const newestSchedule = db
+    .select({ id: schedule.id, status: schedule.status })
+    .from(schedule)
+    .where(ne(schedule.status, "archived"))
+    .orderBy(desc(schedule.createdAt))
+    .get();
+
+  let activeSchedule: { id: string; status: string; hasAssignments: boolean } | null = null;
+  if (newestSchedule) {
+    const assignmentForSchedule = db
+      .select({ count: count() })
+      .from(assignment)
+      .where(eq(assignment.scheduleId, newestSchedule.id))
+      .get();
+    activeSchedule = {
+      id: newestSchedule.id,
+      status: newestSchedule.status,
+      hasAssignments: (assignmentForSchedule?.count ?? 0) > 0,
+    };
+  }
+
   return NextResponse.json({
     pendingLeaveCount: pendingLeave?.count ?? 0,
     openShiftsCount: pendingOpenShifts?.count ?? 0,
@@ -67,6 +91,7 @@ export async function GET() {
       scheduleCount: scheduleCount?.count ?? 0,
       generatedCount: generatedCount?.count ?? 0,
       publishedCount: publishedCount?.count ?? 0,
+      activeSchedule,
     },
   });
 }

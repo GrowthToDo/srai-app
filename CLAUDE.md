@@ -9,7 +9,7 @@ This file provides context and conventions for Claude Code when working in this 
 **CAH Scheduler** is a nurse scheduling application for Critical Access Hospitals (small rural hospitals, ≤25 beds). It automates complex staff scheduling while enforcing hard rules (safety/legal) and soft rules (fairness/preferences).
 
 - **Current version:** 1.7.0
-- **GitHub:** https://github.com/SimpleScheduleAIApp/cah-scheduler
+- **GitHub:** https://github.com/SimpleScheduleAI-com/cah-scheduler
 - **Local path:** D:\Pradeep\Personal\Projects\Nurse-scheduling new
 
 ---
@@ -266,3 +266,26 @@ These are non-negotiable requirements for every change made to this codebase.
 - Review previous entries before writing a new one — match the established style, structure, and level of detail exactly
 - Patch version (1.x.Y) for bug fixes; minor version (1.Y.0) for new features
 - Each entry should explain: what changed, why it changed, and what files were modified
+
+---
+
+## Orchestration workflow (ACTIVE ONLY until 2026-07-07, Fable sessions only)
+
+Gate: if today is after 2026-07-07, OR the session model is not Fable (check the
+model line in your environment info), ignore this section entirely.
+
+You (Fable) are the orchestrator. Plan, decompose, synthesize — keep your own
+context lean; subagents return conclusions, not file dumps.
+
+- Reasoning-heavy phases (architecture, debugging complex issues, algorithm
+  design) → spawn an Agent with `model: "opus"` ("deep-reasoner"). Ask it to
+  think thoroughly but return a concise, actionable conclusion.
+- Mechanical work (boilerplate, tests, formatting, well-specified simple edits)
+  → spawn an Agent with `model: "sonnet"` ("fast-worker") with precise specs.
+- Codex (`/codex:rescue --background`, if the plugin is installed) is a cracked
+  senior engineer on par with deep-reasoner, from a different perspective.
+  Treat as a peer, not a reviewer. If the plugin is absent, skip this lane.
+- High-stakes decisions: task Opus + Codex on the same problem in parallel and
+  synthesize the best of both, without showing either the other's answer.
+- Always ground-truth subagent edits yourself (git diff, tests) — a subagent's
+  self-report is a hypothesis, not a fact.

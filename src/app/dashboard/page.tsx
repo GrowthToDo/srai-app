@@ -9,6 +9,7 @@ import { InfoTip, TERM_HELP } from "@/components/ui/info-tip";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { Sparkline } from "@/components/ui/sparkline";
 import { DoughnutChart } from "@/components/ui/doughnut-chart";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
 
 interface DashboardData {
   staffCount: number;
@@ -43,9 +44,8 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const { guide, counts, flags, dismiss } = useOnboarding();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [gettingStartedDismissed, setGettingStartedDismissed] = useState(false);
-  const [onboarding, setOnboarding] = useState<{ scheduleCount: number; publishedCount: number } | null>(null);
   const [learnDismissed, setLearnDismissed] = useState(false);
   const [learnVisited, setLearnVisited] = useState<Record<string, boolean>>({});
 
@@ -62,31 +62,26 @@ export default function DashboardPage() {
     fetch("/api/dashboard")
       .then((r) => r.json())
       .then(setData);
-    // Onboarding counts (generate/publish progress) for the Getting Started card.
-    fetch("/api/notifications")
-      .then((r) => r.json())
-      .then((j) => setOnboarding(j.onboarding ?? null))
-      .catch(() => {});
-    setGettingStartedDismissed(localStorage.getItem("gettingStartedDismissed") === "true");
     setLearnDismissed(localStorage.getItem("learnDailyOpsDismissed") === "true");
     try {
       setLearnVisited(JSON.parse(localStorage.getItem("learnVisited") ?? "{}"));
     } catch {
       /* corrupted flag — start fresh */
     }
-    // The sidebar Help menu re-opens both checklists from any page.
+  }, []);
+
+  // The sidebar Help menu re-opens both checklists from any page: clear the
+  // fcg:dismissed flag (via the hook) so the Getting Started card returns, plus
+  // the local learn flag so the Learn card returns too.
+  useEffect(() => {
     const reopen = () => {
-      setGettingStartedDismissed(false);
+      localStorage.removeItem("fcg:dismissed");
+      window.dispatchEvent(new StorageEvent("storage", { key: "fcg:dismissed" }));
       setLearnDismissed(false);
     };
     window.addEventListener("reopen-getting-started", reopen);
     return () => window.removeEventListener("reopen-getting-started", reopen);
   }, []);
-
-  function dismissGettingStarted() {
-    localStorage.setItem("gettingStartedDismissed", "true");
-    setGettingStartedDismissed(true);
-  }
 
   function markLearnVisited(key: string) {
     const next = { ...learnVisited, [key]: true };
@@ -123,19 +118,29 @@ export default function DashboardPage() {
     );
   }
 
-  // Full first-cycle journey — not just setup. Steps 4-5 are where new users
-  // previously got lost (nothing pointed from "schedule created" to "generate
-  // and publish it").
-  const hasPublished = (onboarding?.publishedCount ?? 0) > 0;
+  // Full first-cycle journey, driven by the shared onboarding counts + flags so
+  // it can never drift from the sidebar beacon or nudges. Steps 5-6 are where
+  // new users previously got lost (nothing pointed from "schedule created" to
+  // "generate and publish it").
+  const activeSchedule = counts?.activeSchedule ?? null;
+  const scheduleHref = activeSchedule ? `/schedule/${activeSchedule.id}` : "/schedule";
+  const hasPublished = (counts?.publishedCount ?? 0) > 0;
   const gettingStartedSteps = [
-    { label: "Import your staff roster", done: data.staffCount > 0, href: "/setup" },
-    { label: "Review units & rules", done: data.unitsCount > 0, href: "/settings/units" },
-    { label: "Create a schedule period", done: (onboarding?.scheduleCount ?? 0) > 0 || data.scheduleInfo !== null, href: "/schedule" },
-    { label: "Generate the schedule", done: data.fillRate > 0 || hasPublished, href: "/scenarios" },
-    { label: "Review and publish it", done: hasPublished, href: data.scheduleInfo ? `/schedule/${data.scheduleInfo.id}` : "/schedule" },
+    { label: "Import your staff roster", done: (counts?.staffCount ?? 0) > 0, href: "/setup" },
+    { label: "Review your staff", done: flags.staffReviewed, href: "/staff" },
+    { label: "Review units & rules", done: (counts?.unitsCount ?? 0) > 0, href: "/settings/units" },
+    { label: "Create a schedule period", done: (counts?.scheduleCount ?? 0) > 0, href: "/schedule" },
+    { label: "Generate the schedule", done: Boolean(activeSchedule?.hasAssignments) || flags.celebrated, href: scheduleHref },
+    { label: "Review and publish it", done: hasPublished || flags.celebrated, href: scheduleHref },
   ];
-  const allStepsDone = gettingStartedSteps.every((s) => s.done);
-  const showGettingStarted = !gettingStartedDismissed && !allStepsDone;
+  // Card is visible while the first cycle is in flight (S0–S4) and not dismissed.
+  const inFirstCycleStages =
+    guide?.stage === "S0" ||
+    guide?.stage === "S1" ||
+    guide?.stage === "S2" ||
+    guide?.stage === "S3" ||
+    guide?.stage === "S4";
+  const showGettingStarted = inFirstCycleStages && !guide?.dismissed;
 
   const attentionItems: { href: string; text: string; urgent: boolean; info?: boolean }[] = [
     ...(data.overstaffedShifts > 0 && data.scheduleInfo
@@ -216,7 +221,7 @@ export default function DashboardPage() {
                   ))}
                 </ol>
               </div>
-              <Button variant="ghost" size="sm" className="text-amber-700 hover:text-amber-900" onClick={dismissGettingStarted}>
+              <Button variant="ghost" size="sm" className="text-amber-700 hover:text-amber-900" onClick={dismiss}>
                 Dismiss
               </Button>
             </div>
@@ -225,7 +230,7 @@ export default function DashboardPage() {
       )}
 
       {/* Phase 2 — schedule is live; teach the daily-management tools */}
-      {hasPublished && !learnDismissed && !LEARN_ITEMS.every((i) => learnVisited[i.key]) && (
+      {guide?.showLearn && !learnDismissed && !LEARN_ITEMS.every((i) => learnVisited[i.key]) && (
         <Card className="mb-6 border-2 border-primary/25 bg-accent/40 animate-slide-up">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-start justify-between">
