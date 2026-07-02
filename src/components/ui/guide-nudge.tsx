@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
 import { getNudge } from "@/lib/onboarding/guide";
 
@@ -15,8 +16,9 @@ import { getNudge } from "@/lib/onboarding/guide";
  * The pulsing dot matches the sidebar next-step beacon so users connect the two.
  */
 export function GuideNudge() {
-  const { guide } = useOnboarding();
+  const { guide, markStaffReviewed } = useOnboarding();
   const pathname = usePathname();
+  const router = useRouter();
 
   if (!guide || guide.dismissed) return null;
 
@@ -31,6 +33,18 @@ export function GuideNudge() {
       </span>
       <span className="font-semibold shrink-0">Next step:</span>
       <span>{nudge.message}</span>
+      {nudge.action === "staff-reviewed" && nudge.actionLabel && (
+        <Button
+          size="sm"
+          className="ml-auto shrink-0"
+          onClick={() => {
+            markStaffReviewed();
+            router.push("/schedule");
+          }}
+        >
+          {nudge.actionLabel}
+        </Button>
+      )}
       {nudge.href && nudge.linkLabel && (
         <Link
           href={nudge.href}

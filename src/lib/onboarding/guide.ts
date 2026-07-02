@@ -117,6 +117,8 @@ export interface Nudge {
   message: string;
   href?: string;
   linkLabel?: string;
+  action?: "staff-reviewed";
+  actionLabel?: string;
 }
 
 /** True when the pathname is the exact schedule list page (not a detail route). */
@@ -153,9 +155,9 @@ export function getNudge(
       if (pathname.startsWith("/staff")) {
         return {
           message:
-            "Check your imported nurses — roles, FTE, and competency levels. Then create a schedule period.",
-          href: "/schedule",
-          linkLabel: "Create schedule",
+            "Check roles, FTE and competency levels below. When your staff list looks right, continue.",
+          action: "staff-reviewed",
+          actionLabel: "Staff look good — continue",
         };
       }
       if (pathname !== "/setup") {
@@ -168,6 +170,13 @@ export function getNudge(
       return null;
 
     case "S2":
+      if (pathname.startsWith("/staff")) {
+        return {
+          message: "Next: create a schedule period.",
+          href: "/schedule",
+          linkLabel: "Create schedule",
+        };
+      }
       if (isScheduleList(pathname)) {
         return {
           message: "Create a schedule period — pick the unit and date range.",

@@ -132,6 +132,10 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   // starts the first cycle over. Clears the new namespace + legacy keys.
   useEffect(() => {
     const onReset = () => {
+      // Blank the counts FIRST (synchronously) so the derived guide goes null
+      // this render — no surface (especially the celebration modal) can act on
+      // pre-reset counts while we clear flags and refetch.
+      setCounts(null);
       Object.values(FLAG_KEYS).forEach((k) => localStorage.removeItem(k));
       LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
       setFlags(readFlags());
@@ -155,12 +159,14 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   const markCelebrated = useCallback(() => writeFlag("celebrated"), [writeFlag]);
   const dismiss = useCallback(() => writeFlag("dismissed"), [writeFlag]);
 
-  // Visiting the Staff page counts as reviewing the roster.
+  // Route changes don't refetch on their own, but stale counts strand a surface
+  // on a milestone that already advanced. On each pathname change, refetch when
+  // the last fetch is older than the staleness window.
   useEffect(() => {
-    if (pathname.startsWith("/staff") && !flags.staffReviewed) {
-      markStaffReviewed();
+    if (Date.now() - lastFetchRef.current > CACHE_STALE_MS) {
+      refresh();
     }
-  }, [pathname, flags.staffReviewed, markStaffReviewed]);
+  }, [pathname, refresh]);
 
   // guide is null while counts are still loading — surfaces fail closed.
   const guide = useMemo(

@@ -111,6 +111,8 @@ export default function SchedulePage() {
     const created = await res.json();
     setDialogOpen(false);
     setCreating(false);
+    // New schedule period created — refresh the onboarding counts before navigating.
+    window.dispatchEvent(new Event("onboarding-refresh"));
     router.push(`/schedule/${created.id}`);
   }
 

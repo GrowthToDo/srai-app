@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 import { StaffTable } from "@/components/staff/staff-table";
 import { StaffFormDialog } from "@/components/staff/staff-form";
 import { StaffDetailDialog } from "@/components/staff/staff-detail-dialog";
@@ -100,6 +101,8 @@ export default function StaffPage() {
         </div>
         <Button onClick={handleAdd}>Add Staff</Button>
       </div>
+
+      <GuideNudge />
 
       <Card>
         <CardHeader>

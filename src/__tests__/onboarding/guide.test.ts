@@ -178,8 +178,16 @@ describe("getNudge — copy per stage/page", () => {
     expect(n?.message).toContain("Import your roster");
   });
 
-  it("S1 on /staff points to create schedule", () => {
+  it("S1 on /staff returns the staff-reviewed confirmation action", () => {
     const n = getNudge("S1", "/staff", null);
+    expect(n?.action).toBe("staff-reviewed");
+    expect(n?.actionLabel).toBe("Staff look good — continue");
+    // Confirmation nudge is an explicit action, not a passive link.
+    expect(n?.href).toBeUndefined();
+  });
+
+  it("S2 on /staff points to create a schedule", () => {
+    const n = getNudge("S2", "/staff", null);
     expect(n?.href).toBe("/schedule");
     expect(n?.linkLabel).toBe("Create schedule");
   });

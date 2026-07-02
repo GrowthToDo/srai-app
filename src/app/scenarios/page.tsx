@@ -174,6 +174,8 @@ function ScenariosPageContent() {
       return;
     }
     await fetchScenarios(selectedScheduleId);
+    // Applying a variant changes assignments — advance the onboarding beacon.
+    window.dispatchEvent(new Event("onboarding-refresh"));
     setApplyingId(null);
   }
 
