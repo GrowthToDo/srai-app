@@ -30,6 +30,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { GuideNudge } from "@/components/ui/guide-nudge";
 import { Label } from "@/components/ui/label";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
+import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
 
 interface EscalationStep {
   step: string;
@@ -113,10 +116,31 @@ const sourceLabels: Record<string, string> = {
   agency: "Agency",
 };
 
+/** A "[PRACTICE]" marker in the callout's own reason text (either field). */
+function isPracticeCalloutMarker(c: CalloutRecord): boolean {
+  return isPracticeText(c.reason) || isPracticeText(c.reasonDetail);
+}
+
 export default function CalloutsPage() {
   const { addToast } = useToast();
+  const { practice } = useOnboarding();
+  const practiceActive = !!practice?.active;
+  // The tutorial's GENERATED callout (created by approving practice Leave A)
+  // carries NO [PRACTICE] marker in its own text — the leave-approval flow
+  // wrote it, not the practice seeder. It IS identified by id in the practice
+  // status, so a row is practice when the marker matches OR the id matches the
+  // generated record. Without the id check, the real-action guard would fire
+  // on the exact row step 2 tells the manager to handle.
+  const generatedCalloutId = practice?.items.generatedCallout?.id ?? null;
+  const isPracticeCallout = (c: CalloutRecord): boolean =>
+    isPracticeCalloutMarker(c) ||
+    (generatedCalloutId !== null && c.id === generatedCalloutId);
   const [callouts, setCallouts] = useState<CalloutRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Guard: acting on a REAL callout while the tutorial is active asks first.
+  const [confirmRealOpen, setConfirmRealOpen] = useState(false);
+  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [escalationDialogOpen, setEscalationDialogOpen] = useState(false);
   const [detailCallout, setDetailCallout] = useState<CalloutRecord | null>(null);
@@ -241,6 +265,16 @@ export default function CalloutsPage() {
     ? allScheduleAssignments.filter((a) => a.staffId === staffFilter)
     : allScheduleAssignments;
 
+  // While practice is active, acting on a NON-practice (real) callout confirms first.
+  function guardRealAction(c: CalloutRecord, act: () => void) {
+    if (practiceActive && !isPracticeCallout(c)) {
+      setPendingRealAction(() => act);
+      setConfirmRealOpen(true);
+      return;
+    }
+    act();
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -286,10 +320,20 @@ export default function CalloutsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {callouts.map((c) => (
-                  <TableRow key={c.id}>
+                {callouts.map((c) => {
+                  const isPractice = isPracticeCallout(c);
+                  return (
+                  <TableRow
+                    key={c.id}
+                    className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
+                  >
                     <TableCell className="font-medium">
-                      {c.staffFirstName} {c.staffLastName}
+                      <span className="inline-flex items-center gap-2">
+                        {c.staffFirstName} {c.staffLastName}
+                        {isPractice && (
+                          <Badge variant="default" className="text-xs">Practice</Badge>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {c.shiftDate
@@ -299,8 +343,8 @@ export default function CalloutsPage() {
                     </TableCell>
                     <TableCell>
                       {reasonLabels[c.reason] ?? c.reason}
-                      {c.reasonDetail && (
-                        <p className="text-xs text-muted-foreground">{c.reasonDetail}</p>
+                      {c.reasonDetail && stripPracticeMarker(c.reasonDetail) && (
+                        <p className="text-xs text-muted-foreground">{stripPracticeMarker(c.reasonDetail)}</p>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -333,7 +377,7 @@ export default function CalloutsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => findReplacementForCallout(c.id)}
+                            onClick={() => guardRealAction(c, () => findReplacementForCallout(c.id))}
                           >
                             Find Replacement
                           </Button>
@@ -355,7 +399,8 @@ export default function CalloutsPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -385,8 +430,8 @@ export default function CalloutsPage() {
                 <span className="font-medium text-muted-foreground">Reason</span>
                 <span>
                   {reasonLabels[detailCallout.reason] ?? detailCallout.reason}
-                  {detailCallout.reasonDetail && (
-                    <span className="block text-muted-foreground">{detailCallout.reasonDetail}</span>
+                  {detailCallout.reasonDetail && stripPracticeMarker(detailCallout.reasonDetail) && (
+                    <span className="block text-muted-foreground">{stripPracticeMarker(detailCallout.reasonDetail)}</span>
                   )}
                 </span>
 
@@ -714,6 +759,19 @@ export default function CalloutsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmRealActionDialog
+        open={confirmRealOpen}
+        onOpenChange={(open) => {
+          setConfirmRealOpen(open);
+          if (!open) setPendingRealAction(null);
+        }}
+        kind="callout"
+        onConfirm={() => {
+          pendingRealAction?.();
+          setPendingRealAction(null);
+        }}
+      />
     </div>
   );
 }

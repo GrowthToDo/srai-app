@@ -33,6 +33,9 @@ import {
 import { format, parseISO } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { GuideNudge } from "@/components/ui/guide-nudge";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
+import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
 
 interface SwapRequest {
   id: string;
@@ -89,11 +92,22 @@ function formatAssignmentLabel(a: AssignmentOption): string {
   return `${format(parseISO(a.date), "EEE, MMM d")} — ${a.shiftName} (${a.startTime}–${a.endTime})`;
 }
 
+/** A practice-seeded swap carries the "[PRACTICE]" marker in its notes. */
+function isPracticeSwap(req: SwapRequest): boolean {
+  return isPracticeText(req.notes);
+}
+
 export default function SwapsPage() {
   const { addToast } = useToast();
+  const { practice } = useOnboarding();
+  const practiceActive = !!practice?.active;
   const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "denied">("all");
+
+  // Guard: acting on a REAL swap while the tutorial is active asks first.
+  const [confirmRealOpen, setConfirmRealOpen] = useState(false);
+  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
 
   // Two-step approve: pre-validation confirmation dialog
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -285,6 +299,16 @@ export default function SwapsPage() {
     fetchData();
   }
 
+  // While practice is active, acting on a NON-practice (real) swap confirms first.
+  function guardRealAction(req: SwapRequest, act: () => void) {
+    if (practiceActive && !isPracticeSwap(req)) {
+      setPendingRealAction(() => act);
+      setConfirmRealOpen(true);
+      return;
+    }
+    act();
+  }
+
   const filteredRequests = filter === "all"
     ? swapRequests
     : swapRequests.filter(r => r.status === filter);
@@ -356,10 +380,20 @@ export default function SwapsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRequests.map((req) => (
-                  <TableRow key={req.id}>
+                {filteredRequests.map((req) => {
+                  const isPractice = isPracticeSwap(req);
+                  return (
+                  <TableRow
+                    key={req.id}
+                    className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
+                  >
                     <TableCell className="font-medium">
-                      {req.requestor?.firstName} {req.requestor?.lastName}
+                      <span className="inline-flex items-center gap-2">
+                        {req.requestor?.firstName} {req.requestor?.lastName}
+                        {isPractice && (
+                          <Badge variant="default" className="text-xs">Practice</Badge>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>{req.requestorShiftDate ? format(parseISO(req.requestorShiftDate), "MMM d, yyyy") : "—"}</TableCell>
                     <TableCell>
@@ -373,7 +407,7 @@ export default function SwapsPage() {
                     <TableCell>
                       <Badge variant={statusColors[req.status]}>{req.status}</Badge>
                     </TableCell>
-                    <TableCell className="max-w-50 truncate">{req.notes}</TableCell>
+                    <TableCell className="max-w-50 truncate">{stripPracticeMarker(req.notes)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1 items-center">
                         {req.status === "pending" && (
@@ -381,14 +415,14 @@ export default function SwapsPage() {
                             <Button
                               size="sm"
                               variant="default"
-                              onClick={() => handleApproveClick(req.id)}
+                              onClick={() => guardRealAction(req, () => handleApproveClick(req.id))}
                             >
                               Approve
                             </Button>
                             <Button
                               size="sm"
                               variant="destructive"
-                              onClick={() => handleDeny(req.id)}
+                              onClick={() => guardRealAction(req, () => handleDeny(req.id))}
                             >
                               Deny
                             </Button>
@@ -402,7 +436,8 @@ export default function SwapsPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -608,6 +643,19 @@ export default function SwapsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmRealActionDialog
+        open={confirmRealOpen}
+        onOpenChange={(open) => {
+          setConfirmRealOpen(open);
+          if (!open) setPendingRealAction(null);
+        }}
+        kind="swap"
+        onConfirm={() => {
+          pendingRealAction?.();
+          setPendingRealAction(null);
+        }}
+      />
     </div>
   );
 }

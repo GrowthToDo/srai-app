@@ -42,9 +42,26 @@ export type Stage = "S0" | "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | "S7";
 export interface PracticeStatus {
   active: boolean;
   items: {
-    leaveA: { id: string; status: string } | null;
-    leaveB: { id: string; status: string } | null;
-    swap: { id: string; status: string } | null;
+    /** staffName + date are joined server-side so the nudge can name the actual
+     *  nurse and shift; both may be null for older seeded data (pre-join). */
+    leaveA: {
+      id: string;
+      status: string;
+      staffName?: string | null;
+      date?: string | null;
+    } | null;
+    leaveB: {
+      id: string;
+      status: string;
+      staffName?: string | null;
+      date?: string | null;
+    } | null;
+    swap: {
+      id: string;
+      status: string;
+      requestingName?: string | null;
+      targetName?: string | null;
+    } | null;
     generatedCallout: { id: string; status: string } | null;
     generatedOpenShift: { id: string; status: string } | null;
   };
@@ -333,6 +350,26 @@ function stepSuffix(order: number): string {
 }
 
 /**
+ * Format a "YYYY-MM-DD" leave date as "Mon D" for nudge copy, in a pure, locale-
+ * stable way (no date-fns — this module must stay browser/Node-agnostic and
+ * unit-testable). Returns null for missing/malformed input so callers fall back
+ * to the generic copy.
+ */
+function formatNudgeDate(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) return null;
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const monthIdx = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  if (monthIdx < 0 || monthIdx > 11 || day < 1 || day > 31) return null;
+  return `${months[monthIdx]} ${day}`;
+}
+
+/**
  * The S6 practice-loop nudge for a page. Each page's nudge says what to do, then
  * what happened, then where to go next; wherever the manager wanders, an
  * off-loop page pulls them back to the current step. Assumes practice.active.
@@ -347,10 +384,15 @@ function getLearnNudge(
   const leaveA = items.leaveA;
   const leaveB = items.leaveB;
 
-  // /leave — approve the two practice requests.
+  // /leave — approve the two practice requests. Copy names the actual seeded
+  // nurses (and Leave A's shift date) when the server-joined names are present,
+  // so the manager acts on the PRACTICE rows and not a real imported request.
   if (pathname.startsWith("/leave")) {
     const aApproved = leaveA?.status === "approved";
     const bApproved = leaveB?.status === "approved";
+    const aName = leaveA?.staffName ?? null;
+    const bName = leaveB?.staffName ?? null;
+    const aDate = formatNudgeDate(leaveA?.date);
     if (aApproved && bApproved) {
       return {
         message:
@@ -361,9 +403,23 @@ function getLearnNudge(
       };
     }
     if (aApproved) {
+      const nextClause = bName
+        ? `Now approve ${bName}'s planned PRACTICE leave too`
+        : "Now approve the planned leave too";
       return {
         message:
-          "That shift just became a callout (within 7 days of the shift, your unit's callout threshold). Now approve the planned leave too — it's beyond 7 days, so it becomes an open shift instead." +
+          `That shift just became a callout (within 7 days of the shift, your unit's callout threshold). ${nextClause} — it's beyond 7 days, so it becomes an open shift instead.` +
+          stepSuffix(1),
+      };
+    }
+    if (aName) {
+      const dateClause = aDate
+        ? `the shift on ${aDate} is inside your 7-day callout threshold`
+        : "the shift is inside your 7-day callout threshold";
+      const thenClause = bName ? ` Then approve ${bName}'s.` : "";
+      return {
+        message:
+          `Approve ${aName}'s PRACTICE request first — ${dateClause} (a unit setting), so approving creates a callout.${thenClause}` +
           stepSuffix(1),
       };
     }
@@ -416,6 +472,15 @@ function getLearnNudge(
         message: "Next: adjust the census." + stepSuffix(4),
         href: "/census",
         linkLabel: "Go to Census",
+      };
+    }
+    const requestingName = items.swap?.requestingName ?? null;
+    const targetName = items.swap?.targetName ?? null;
+    if (requestingName && targetName) {
+      return {
+        message:
+          `${requestingName} wants to trade with ${targetName} — approve or deny the PRACTICE swap. Compliance rules (60-hour caps, rest, competency) are checked automatically first.` +
+          stepSuffix(4),
       };
     }
     return {

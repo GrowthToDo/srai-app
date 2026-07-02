@@ -532,3 +532,79 @@ describe("getNudge S6 — practice-aware copy per page", () => {
     expect(n?.linkLabel).toBe("Back to Dashboard");
   });
 });
+
+describe("getNudge S6 — named practice copy (staffName present) with generic fallback", () => {
+  it("/leave names both nurses and Leave A's date when the server join is present", () => {
+    const n = getNudge(
+      "S6",
+      "/leave",
+      null,
+      practiceStatus({
+        leaveA: { id: "la", status: "pending", staffName: "Maria Gomez", date: "2026-07-10" },
+        leaveB: { id: "lb", status: "pending", staffName: "James Park", date: "2026-07-20" },
+      }),
+      noVisits
+    );
+    // Names the actual person and the shift date, marks it a PRACTICE request,
+    // keeps the 7-day threshold framing, and points at the second nurse next.
+    expect(n?.message).toContain("Approve Maria Gomez's PRACTICE request first");
+    expect(n?.message).toContain("the shift on Jul 10 is inside your 7-day callout threshold");
+    expect(n?.message).toContain("Then approve James Park's.");
+    expect(n?.message).toContain("Step 1 of 6");
+  });
+
+  it("/leave falls back to the generic short-notice copy when names are absent (older data)", () => {
+    const n = getNudge("S6", "/leave", null, practiceStatus(), noVisits);
+    expect(n?.message).toContain("short-notice");
+    expect(n?.message).toContain("7-day callout threshold");
+    expect(n?.message).not.toContain("PRACTICE request first");
+  });
+
+  it("/leave after Leave A approved names Leave B's nurse when present", () => {
+    const n = getNudge(
+      "S6",
+      "/leave",
+      null,
+      practiceStatus({
+        leaveA: { id: "la", status: "approved", staffName: "Maria Gomez", date: "2026-07-10" },
+        leaveB: { id: "lb", status: "pending", staffName: "James Park", date: "2026-07-20" },
+      }),
+      noVisits
+    );
+    expect(n?.message).toContain("Now approve James Park's planned PRACTICE leave too");
+    expect(n?.message).toContain("open shift");
+  });
+
+  it("/leave after Leave A approved falls back to generic when Leave B name absent", () => {
+    const n = getNudge(
+      "S6",
+      "/leave",
+      null,
+      practiceStatus({ leaveA: { id: "la", status: "approved" } }),
+      noVisits
+    );
+    expect(n?.message).toContain("Now approve the planned leave too");
+    expect(n?.message).toContain("open shift");
+  });
+
+  it("/swaps names the requesting and target nurses when present", () => {
+    const n = getNudge(
+      "S6",
+      "/swaps",
+      null,
+      practiceStatus({
+        swap: { id: "sw", status: "pending", requestingName: "Ada Lin", targetName: "Ben Ortiz" },
+      }),
+      noVisits
+    );
+    expect(n?.message).toContain("Ada Lin wants to trade with Ben Ortiz");
+    expect(n?.message).toContain("PRACTICE swap");
+    expect(n?.message).toContain("Step 4 of 6");
+  });
+
+  it("/swaps falls back to the generic PRACTICE-swap copy when names are absent", () => {
+    const n = getNudge("S6", "/swaps", null, practiceStatus(), noVisits);
+    expect(n?.message).toContain("[PRACTICE] swap");
+    expect(n?.message).not.toContain("wants to trade with");
+  });
+});

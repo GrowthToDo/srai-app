@@ -9,7 +9,7 @@ import {
   callout,
   openShift,
 } from "@/db/schema";
-import { eq, and, gte, lte, inArray, like, or } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, like, or, aliasedTable } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 /**
@@ -257,6 +257,8 @@ interface PracticeLeaveRow {
   endDate: string;
   status: string;
   notes: string | null;
+  staffFirstName: string | null;
+  staffLastName: string | null;
 }
 
 function findPracticeLeaves(): {
@@ -271,8 +273,11 @@ function findPracticeLeaves(): {
       endDate: staffLeave.endDate,
       status: staffLeave.status,
       notes: staffLeave.notes,
+      staffFirstName: staff.firstName,
+      staffLastName: staff.lastName,
     })
     .from(staffLeave)
+    .leftJoin(staff, eq(staffLeave.staffId, staff.id))
     .where(like(staffLeave.notes, `%${PRACTICE}%`))
     .all();
 
@@ -281,17 +286,57 @@ function findPracticeLeaves(): {
   return { leaveA, leaveB };
 }
 
-function findPracticeSwap() {
+/** Full name for a practice leave row, or null when the staff join is empty. */
+function leaveStaffName(l: PracticeLeaveRow | null): string | null {
+  if (!l) return null;
+  const name = `${l.staffFirstName ?? ""} ${l.staffLastName ?? ""}`.trim();
+  return name.length > 0 ? name : null;
+}
+
+interface PracticeSwapRow {
+  id: string;
+  status: string;
+  requestingStaffId: string;
+  targetStaffId: string | null;
+  requestingFirstName: string | null;
+  requestingLastName: string | null;
+  targetFirstName: string | null;
+  targetLastName: string | null;
+}
+
+function findPracticeSwap(): PracticeSwapRow | null {
+  const requestingStaff = aliasedTable(staff, "requesting_staff");
+  const targetStaff = aliasedTable(staff, "target_staff");
   return (
     db
       .select({
         id: shiftSwapRequest.id,
         status: shiftSwapRequest.status,
+        requestingStaffId: shiftSwapRequest.requestingStaffId,
+        targetStaffId: shiftSwapRequest.targetStaffId,
+        requestingFirstName: requestingStaff.firstName,
+        requestingLastName: requestingStaff.lastName,
+        targetFirstName: targetStaff.firstName,
+        targetLastName: targetStaff.lastName,
       })
       .from(shiftSwapRequest)
+      .leftJoin(
+        requestingStaff,
+        eq(shiftSwapRequest.requestingStaffId, requestingStaff.id)
+      )
+      .leftJoin(targetStaff, eq(shiftSwapRequest.targetStaffId, targetStaff.id))
       .where(like(shiftSwapRequest.notes, `%${PRACTICE}%`))
       .get() ?? null
   );
+}
+
+/** Join a first/last name pair into a display name, or null when absent. */
+function joinName(
+  first: string | null | undefined,
+  last: string | null | undefined
+): string | null {
+  const name = `${first ?? ""} ${last ?? ""}`.trim();
+  return name.length > 0 ? name : null;
 }
 
 /**
@@ -358,9 +403,33 @@ export async function GET() {
   return NextResponse.json({
     active,
     items: {
-      leaveA: leaveA ? { id: leaveA.id, status: leaveA.status } : null,
-      leaveB: leaveB ? { id: leaveB.id, status: leaveB.status } : null,
-      swap: swap ? { id: swap.id, status: swap.status } : null,
+      leaveA: leaveA
+        ? {
+            id: leaveA.id,
+            status: leaveA.status,
+            staffName: leaveStaffName(leaveA),
+            date: leaveA.startDate,
+          }
+        : null,
+      leaveB: leaveB
+        ? {
+            id: leaveB.id,
+            status: leaveB.status,
+            staffName: leaveStaffName(leaveB),
+            date: leaveB.startDate,
+          }
+        : null,
+      swap: swap
+        ? {
+            id: swap.id,
+            status: swap.status,
+            requestingName: joinName(
+              swap.requestingFirstName,
+              swap.requestingLastName
+            ),
+            targetName: joinName(swap.targetFirstName, swap.targetLastName),
+          }
+        : null,
       generatedCallout,
       generatedOpenShift,
     },

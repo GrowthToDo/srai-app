@@ -32,6 +32,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GuideNudge } from "@/components/ui/guide-nudge";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
+import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
 
 interface LeaveRequest {
   id: string;
@@ -84,13 +87,24 @@ function fmtDate(dateStr: string) {
   try { return format(parseISO(dateStr), "MMM d, yyyy"); } catch { return dateStr; }
 }
 
+/** A practice-seeded leave carries the marker in notes (falls back to reason). */
+function isPracticeLeave(req: LeaveRequest): boolean {
+  return isPracticeText(req.notes) || isPracticeText(req.reason);
+}
+
 export default function LeavePage() {
   const { addToast } = useToast();
+  const { practice } = useOnboarding();
+  const practiceActive = !!practice?.active;
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "denied">("all");
+
+  // Guard: acting on a REAL request while the tutorial is active asks first.
+  const [confirmRealOpen, setConfirmRealOpen] = useState(false);
+  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
 
   // Detail dialog
   const [detailRequest, setDetailRequest] = useState<LeaveRequest | null>(null);
@@ -199,6 +213,17 @@ export default function LeavePage() {
     fetchData();
   }
 
+  // While practice is active, acting on a NON-practice (real) row confirms first.
+  // Practice rows act immediately. Never blocks — just a guardrail.
+  function guardRealAction(req: LeaveRequest, act: () => void) {
+    if (practiceActive && !isPracticeLeave(req)) {
+      setPendingRealAction(() => act);
+      setConfirmRealOpen(true);
+      return;
+    }
+    act();
+  }
+
   const filteredRequests = filter === "all"
     ? leaveRequests
     : leaveRequests.filter(r => r.status === filter);
@@ -270,10 +295,20 @@ export default function LeavePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRequests.map((req) => (
-                  <TableRow key={req.id}>
+                {filteredRequests.map((req) => {
+                  const isPractice = isPracticeLeave(req);
+                  return (
+                  <TableRow
+                    key={req.id}
+                    className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
+                  >
                     <TableCell className="font-medium">
-                      {req.staffFirstName} {req.staffLastName}
+                      <span className="inline-flex items-center gap-2">
+                        {req.staffFirstName} {req.staffLastName}
+                        {isPractice && (
+                          <Badge variant="default" className="text-xs">Practice</Badge>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>{leaveTypeLabels[req.leaveType] || req.leaveType}</TableCell>
                     <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
@@ -295,14 +330,14 @@ export default function LeavePage() {
                             <Button
                               size="sm"
                               variant="default"
-                              onClick={() => handleApprove(req.id)}
+                              onClick={() => guardRealAction(req, () => handleApprove(req.id))}
                             >
                               Approve
                             </Button>
                             <Button
                               size="sm"
                               variant="destructive"
-                              onClick={() => { setDenyTarget(req); setDenialReason(""); setDenyError(""); }}
+                              onClick={() => guardRealAction(req, () => { setDenyTarget(req); setDenialReason(""); setDenyError(""); })}
                             >
                               Deny
                             </Button>
@@ -323,7 +358,8 @@ export default function LeavePage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -381,17 +417,17 @@ export default function LeavePage() {
                   </>
                 )}
 
-                {detailRequest.reason && (
+                {detailRequest.reason && stripPracticeMarker(detailRequest.reason) && (
                   <>
                     <span className="font-medium text-muted-foreground">Reason</span>
-                    <span>{detailRequest.reason}</span>
+                    <span>{stripPracticeMarker(detailRequest.reason)}</span>
                   </>
                 )}
 
-                {detailRequest.notes && (
+                {detailRequest.notes && stripPracticeMarker(detailRequest.notes) && (
                   <>
                     <span className="font-medium text-muted-foreground">Notes</span>
-                    <span>{detailRequest.notes}</span>
+                    <span>{stripPracticeMarker(detailRequest.notes)}</span>
                   </>
                 )}
               </div>
@@ -523,6 +559,19 @@ export default function LeavePage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmRealActionDialog
+        open={confirmRealOpen}
+        onOpenChange={(open) => {
+          setConfirmRealOpen(open);
+          if (!open) setPendingRealAction(null);
+        }}
+        kind="leave request"
+        onConfirm={() => {
+          pendingRealAction?.();
+          setPendingRealAction(null);
+        }}
+      />
     </div>
   );
 }

@@ -23,6 +23,9 @@ import {
 import { format, parseISO } from "date-fns";
 import { EntityHistoryDialog } from "@/components/ui/entity-history-dialog";
 import { GuideNudge } from "@/components/ui/guide-nudge";
+import { useOnboarding } from "@/lib/onboarding/use-onboarding";
+import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
 
 interface CandidateRecommendation {
   staffId: string;
@@ -107,8 +110,25 @@ const SOURCE_COLORS: Record<string, string> = {
   agency: "bg-red-100 text-red-800",
 };
 
+/** A "[PRACTICE]" marker in the open shift's own reasonDetail text. */
+function isPracticeOpenShiftMarker(req: CoverageRequestData): boolean {
+  return isPracticeText(req.reasonDetail);
+}
+
 export default function CoverageRequestsPage() {
   const { addToast } = useToast();
+  const { practice } = useOnboarding();
+  const practiceActive = !!practice?.active;
+  // The tutorial's GENERATED open shift (created by approving practice Leave B)
+  // carries NO [PRACTICE] marker in its own text — the leave-approval flow
+  // wrote it, not the practice seeder. It IS identified by id in the practice
+  // status, so a row is practice when the marker matches OR the id matches the
+  // generated record. Without the id check, the real-action guard would fire
+  // on the exact row step 3 tells the manager to handle.
+  const generatedOpenShiftId = practice?.items.generatedOpenShift?.id ?? null;
+  const isPracticeOpenShift = (req: CoverageRequestData): boolean =>
+    isPracticeOpenShiftMarker(req) ||
+    (generatedOpenShiftId !== null && req.id === generatedOpenShiftId);
   const [requests, setRequests] = useState<CoverageRequestData[]>([]);
   const [loading, setLoading] = useState(true);
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
@@ -118,6 +138,20 @@ export default function CoverageRequestsPage() {
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [cancelTargetIsLeave, setCancelTargetIsLeave] = useState(false);
   const [cancelTargetStaffName, setCancelTargetStaffName] = useState("");
+
+  // Guard: acting on a REAL open shift while the tutorial is active asks first.
+  const [confirmRealOpen, setConfirmRealOpen] = useState(false);
+  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
+
+  // While practice is active, acting on a NON-practice (real) row confirms first.
+  function guardRealAction(req: CoverageRequestData, act: () => void) {
+    if (practiceActive && !isPracticeOpenShift(req)) {
+      setPendingRealAction(() => act);
+      setConfirmRealOpen(true);
+      return;
+    }
+    act();
+  }
 
   const fetchData = useCallback(async () => {
     const res = await fetch("/api/open-shifts");
@@ -262,10 +296,19 @@ export default function CoverageRequestsPage() {
               <TableBody>
                 {filteredRequests.map((req) => {
                   const topCandidate = req.recommendations?.[0];
+                  const isPractice = isPracticeOpenShift(req);
                   return (
-                    <TableRow key={req.id}>
+                    <TableRow
+                      key={req.id}
+                      className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
+                    >
                       <TableCell className="font-medium">
-                        {format(parseISO(req.shiftDate), "EEE, MMM d")}
+                        <span className="inline-flex items-center gap-2">
+                          {format(parseISO(req.shiftDate), "EEE, MMM d")}
+                          {isPractice && (
+                            <Badge variant="default" className="text-xs">Practice</Badge>
+                          )}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div>{req.shiftName}</div>
@@ -319,7 +362,7 @@ export default function CoverageRequestsPage() {
                             <>
                               <Button
                                 size="sm"
-                                onClick={() => handleApproveClick(req)}
+                                onClick={() => guardRealAction(req, () => handleApproveClick(req))}
                                 disabled={!req.recommendations?.length}
                               >
                                 Review
@@ -327,7 +370,7 @@ export default function CoverageRequestsPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleCancelClick(req)}
+                                onClick={() => guardRealAction(req, () => handleCancelClick(req))}
                               >
                                 Cancel
                               </Button>
@@ -398,7 +441,7 @@ export default function CoverageRequestsPage() {
                   <strong>Original Staff:</strong> {selectedRequest.originalStaffFirstName} {selectedRequest.originalStaffLastName}
                 </p>
                 <p>
-                  <strong>Reason:</strong> {selectedRequest.reasonDetail || selectedRequest.reason}
+                  <strong>Reason:</strong> {stripPracticeMarker(selectedRequest.reasonDetail) || selectedRequest.reason}
                 </p>
               </div>
 
@@ -538,6 +581,19 @@ export default function CoverageRequestsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmRealActionDialog
+        open={confirmRealOpen}
+        onOpenChange={(open) => {
+          setConfirmRealOpen(open);
+          if (!open) setPendingRealAction(null);
+        }}
+        kind="open shift"
+        onConfirm={() => {
+          pendingRealAction?.();
+          setPendingRealAction(null);
+        }}
+      />
     </div>
   );
 }
