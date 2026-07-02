@@ -96,6 +96,9 @@ interface OnboardingContextValue {
   startPractice: () => Promise<string | null>;
   /** Tear down the practice chain then refresh. */
   removePractice: () => Promise<void>;
+  /** Mark a learn step complete (writes fcg:learn:<key> + updates state). Used by
+   *  the explicit "Done with census / Finish tutorial" nudge buttons. */
+  markLearnStep: (key: "callouts" | "openShifts" | "census" | "audit") => void;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -240,10 +243,15 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   }, [refresh]);
 
   // Set the per-step visit flag when the manager lands on a learn page WHILE
-  // practice is active AND that step's prerequisite record exists. The census
-  // and audit steps have no server prerequisite (visiting completes them); the
-  // callouts/open-shifts steps require the generated record to exist first, so a
-  // premature visit does not skip the lesson.
+  // practice is active AND that step's prerequisite record exists. Only the
+  // callouts/open-shifts steps auto-complete on visit (and only once the
+  // generated record exists, so a premature visit does not skip the lesson).
+  //
+  // Census and audit do NOT auto-complete on visit: a mere-visit flag killed
+  // their walkthrough nudge the instant the page loaded, so the ①②③ guidance
+  // never got a chance to guide. Those two steps are now completed explicitly
+  // by the nudge's action button (markLearnStep), which lets the walkthrough
+  // stay on screen until the manager says they are done.
   useEffect(() => {
     const p = practice;
     if (!p?.active) return;
@@ -257,14 +265,25 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       mark(LEARN_VISIT_KEYS.callouts);
     } else if (pathname.startsWith("/open-shifts") && p.items.generatedOpenShift) {
       mark(LEARN_VISIT_KEYS.openShifts);
-    } else if (pathname.startsWith("/census")) {
-      mark(LEARN_VISIT_KEYS.census);
-    } else if (pathname.startsWith("/audit")) {
-      mark(LEARN_VISIT_KEYS.audit);
     }
     // Re-run when the practice status changes too: a manager already sitting on
     // /callouts when the generated callout appears should still be marked.
   }, [pathname, practice]);
+
+  // Explicitly complete a learn step (fcg:learn:<key>). The census/audit nudges
+  // call this from their "Done / Finish" action button so their walkthrough is
+  // dismissed on the manager's command, not on arrival. Same-tab writes don't
+  // fire "storage", so we update React state directly.
+  const markLearnStep = useCallback(
+    (key: "callouts" | "openShifts" | "census" | "audit") => {
+      const storageKey = LEARN_VISIT_KEYS[key];
+      if (localStorage.getItem(storageKey) !== "true") {
+        localStorage.setItem(storageKey, "true");
+        setVisits(readVisits());
+      }
+    },
+    []
+  );
 
   // Route changes don't refetch on their own, but stale counts strand a surface
   // on a milestone that already advanced. On each pathname change, refetch when
@@ -295,6 +314,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       refresh,
       startPractice,
       removePractice,
+      markLearnStep,
     }),
     [
       guide,
@@ -308,6 +328,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       refresh,
       startPractice,
       removePractice,
+      markLearnStep,
     ]
   );
 

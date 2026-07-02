@@ -505,4 +505,30 @@ describe("getNudge S6 — practice-aware copy per page", () => {
     const after = getNudge("S6", "/census", null, practiceStatus(), { ...noVisits, census: true });
     expect(after?.href).toBe("/audit");
   });
+
+  it("/census walkthrough carries an explicit 'done' action (not auto-completed on visit)", () => {
+    // The ①②③ walkthrough must stay on screen and offer an explicit completion
+    // button — a mere-visit flag used to kill it instantly.
+    const n = getNudge("S6", "/census", null, practiceStatus(), noVisits);
+    expect(n?.action).toBe("learn-census-done");
+    expect(n?.actionLabel).toBe("Done with census — continue");
+    // ①②③ walkthrough copy is preserved.
+    expect(n?.message).toContain("①");
+    expect(n?.message).toContain("census tier");
+  });
+
+  it("/audit before completion offers the 'Finish tutorial' action (no dead end)", () => {
+    const n = getNudge("S6", "/audit", null, practiceStatus(), noVisits);
+    expect(n?.action).toBe("learn-audit-done");
+    expect(n?.actionLabel).toBe("Finish tutorial — back to Dashboard");
+    expect(n?.message).toContain("paper trail");
+    expect(n?.message).toContain("Step 6 of 6");
+  });
+
+  it("/audit after completion points back to the dashboard, no action button", () => {
+    const n = getNudge("S6", "/audit", null, practiceStatus(), { ...noVisits, audit: true });
+    expect(n?.action).toBeUndefined();
+    expect(n?.href).toBe("/dashboard");
+    expect(n?.linkLabel).toBe("Back to Dashboard");
+  });
 });

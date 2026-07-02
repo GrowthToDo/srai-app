@@ -432,6 +432,9 @@ export default function CoverageRequestsPage() {
                           <span className="text-sm font-semibold">
                             {index + 1}. {candidate.staffName}
                           </span>
+                          {index === 0 && (
+                            <Badge className="text-xs">Best match</Badge>
+                          )}
                           {candidate.staffId !== "agency" && candidate.role && (
                             <Badge variant="secondary" className="text-xs">{candidate.role}</Badge>
                           )}
@@ -516,7 +519,7 @@ export default function CoverageRequestsPage() {
                       </div>
                       <Button
                         onClick={() => handleApproveCandidate(candidate.staffId)}
-                        variant={index === 0 ? "default" : "outline"}
+                        variant="outline"
                         className="shrink-0"
                       >
                         {candidate.staffId === "agency" ? "Contact Agency" : "Approve"}

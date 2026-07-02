@@ -440,16 +440,23 @@ export async function DELETE() {
         .where(inArray(openShift.originalAssignmentId, ids))
         .all();
       for (const o of openShifts) {
-        // If it led to an assignment, filledByAssignmentId is the clean handle.
-        if (o.filledByAssignmentId) {
+        // Order matters: open_shift.filled_by_assignment_id has a FK to
+        // assignment with NO onDelete action, so deleting the replacement
+        // assignment while this open_shift still points at it raises
+        // "FOREIGN KEY constraint failed" and rolls back the WHOLE teardown —
+        // the founder's approved chain then survived removal entirely. Delete
+        // the open_shift row FIRST (it also references originalAssignmentId,
+        // which we restore below), THEN the replacement assignment it named.
+        const filledBy = o.filledByAssignmentId;
+        db.delete(openShift).where(eq(openShift.id, o.id)).run();
+        removed.openShifts += 1;
+        if (filledBy) {
           const del = db
             .delete(assignment)
-            .where(eq(assignment.id, o.filledByAssignmentId))
+            .where(eq(assignment.id, filledBy))
             .run();
           removed.replacementAssignments += del.changes ?? 0;
         }
-        db.delete(openShift).where(eq(openShift.id, o.id)).run();
-        removed.openShifts += 1;
       }
 
       // 2c. Restore the affected assignments the approval mutated. The leave

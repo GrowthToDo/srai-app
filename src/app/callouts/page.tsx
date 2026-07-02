@@ -574,9 +574,17 @@ export default function CalloutsPage() {
           )}
 
           <div className="space-y-2">
-            {escalationOptions.map((c, idx) => {
+            {(() => {
+              // The top-ranked candidate the manager can actually assign (eligible
+              // and available) is the recommended pick. Mark it so both this list
+              // and the open-shifts list present their #1 the same way.
+              const bestMatchStaffId = escalationOptions.find(
+                (x) => x.isEligible && x.isAvailable
+              )?.staffId;
+              return escalationOptions.map((c, idx) => {
               const eligibleCount = escalationOptions.filter((x) => x.isEligible).length;
               const showDivider = !c.isEligible && idx > 0 && escalationOptions[idx - 1].isEligible;
+              const isBestMatch = c.staffId === bestMatchStaffId;
               return (
                 <div key={c.staffId}>
                   {showDivider && (
@@ -599,6 +607,9 @@ export default function CalloutsPage() {
                         <span className="text-sm font-medium">
                           {c.firstName} {c.lastName}
                         </span>
+                        {isBestMatch && (
+                          <Badge className="text-xs">Best match</Badge>
+                        )}
                         <Badge variant="secondary" className="text-xs">{c.role}</Badge>
                         <Badge variant="outline" className="text-xs">
                           {sourceLabels[c.source] ?? c.source}
@@ -695,7 +706,8 @@ export default function CalloutsPage() {
                   </div>
                 </div>
               );
-            })}
+              });
+            })()}
             {escalationOptions.length === 0 && (
               <p className="text-sm text-muted-foreground">No candidates available.</p>
             )}

@@ -101,12 +101,46 @@ export default function CensusPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  // Guards the one-time default-date clamp so it never overrides the manager's
+  // own date pick (only the initial today→published-range adjustment fires).
+  const [dateInitialized, setDateInitialized] = useState(false);
 
   // Load census bands once (used for tier → band lookup and Tab 2 display)
   useEffect(() => {
     fetch("/api/census-bands")
       .then((r) => r.json())
       .then(setBands);
+  }, []);
+
+  // Default the date to the newest published schedule's range, clamped to today.
+  // The page defaults to today, but if today is outside the current published
+  // schedule the census table is empty and the tutorial appears broken. Clamp
+  // today into [scheduleStart, scheduleEnd] of the newest published schedule so
+  // the page always opens on a day that has shifts. The manager can still change
+  // the date freely — this runs once and only if they haven't already.
+  useEffect(() => {
+    fetch("/api/schedules")
+      .then((r) => r.json())
+      .then((scheds: { status: string; startDate: string; endDate: string }[]) => {
+        setDateInitialized(true);
+        const published = (scheds ?? []).filter((s) => s.status === "published");
+        if (published.length === 0) return; // no published schedule → keep today
+        // Newest = latest startDate.
+        const newest = published.reduce((a, b) =>
+          a.startDate >= b.startDate ? a : b
+        );
+        // clamp(today, start, end) using ISO yyyy-MM-dd string comparison.
+        const clamped =
+          today < newest.startDate
+            ? newest.startDate
+            : today > newest.endDate
+            ? newest.endDate
+            : today;
+        if (clamped !== today) setDate(clamped);
+      })
+      .catch(() => setDateInitialized(true));
+    // Intentionally runs once on mount; `today` is stable for the session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchShifts = useCallback(async (d: string) => {
@@ -120,8 +154,12 @@ export default function CensusPage() {
   }, []);
 
   useEffect(() => {
+    // Wait for the one-time default-date resolution so we don't fetch today and
+    // then immediately re-fetch the clamped published-range date (avoids a
+    // flash of "No shifts found" before the correct date loads).
+    if (!dateInitialized) return;
     fetchShifts(date);
-  }, [date, fetchShifts]);
+  }, [date, fetchShifts, dateInitialized]);
 
   // Default unset shifts to Green so the manager sees a baseline on every page open.
   // Only applies to shifts with no acuityLevel already saved — does not override

@@ -313,7 +313,7 @@ export interface Nudge {
   message: string;
   href?: string;
   linkLabel?: string;
-  action?: "staff-reviewed";
+  action?: "staff-reviewed" | "learn-census-done" | "learn-audit-done";
   actionLabel?: string;
 }
 
@@ -425,7 +425,10 @@ function getLearnNudge(
     };
   }
 
-  // /census — raise a tier and watch staffing change.
+  // /census — raise a tier and watch staffing change. Completing this step is
+  // explicit (the "Done" button below), so the ①②③ walkthrough stays on screen
+  // until the manager has actually worked through it — a mere visit no longer
+  // silently marks it done and kills the guidance.
   if (pathname.startsWith("/census")) {
     if (visits.census) {
       return {
@@ -438,15 +441,30 @@ function getLearnNudge(
       message:
         "① Pick a date in your published schedule ② raise the census tier ③ watch required staffing change and the schedule flag new gaps. Set it back when you're done." +
         stepSuffix(5),
+      action: "learn-census-done",
+      actionLabel: "Done with census — continue",
     };
   }
 
-  // /audit — the paper trail. Completing this = tutorial done.
+  // /audit — the paper trail. Completing this = tutorial done. Explicit finish
+  // so the audit step is no longer a dead end: the button marks it done and
+  // returns the manager to the dashboard, where the Learn card shows completion.
   if (pathname.startsWith("/audit")) {
+    if (visits.audit) {
+      return {
+        message:
+          "That's the whole daily loop. Remove your practice entries from the dashboard Learn card whenever you're ready." +
+          stepSuffix(6),
+        href: "/dashboard",
+        linkLabel: "Back to Dashboard",
+      };
+    }
     return {
       message:
         "Everything you just did — the approvals, the callout, the swap — was recorded here automatically. This is your paper trail for state surveys and staffing disputes." +
         stepSuffix(6),
+      action: "learn-audit-done",
+      actionLabel: "Finish tutorial — back to Dashboard",
     };
   }
 

@@ -98,9 +98,19 @@ export default function DashboardPage() {
 
   async function handleRemovePractice() {
     setPracticeBusy(true);
+    // Capture completion BEFORE teardown: removePractice() clears the
+    // fcg:learn:* flags, so learnProgress would read 0/6 afterwards. If the
+    // manager finished all six steps, retire the Learn card entirely; if they
+    // removed mid-tutorial, the cleared flags return the card to its
+    // "Start practice mode" state on the next render (no half-done checklist).
+    const wasAllComplete = learnProgress(practice, visits).allComplete;
     await removePractice();
     setPracticeBusy(false);
-    setPracticeRemovedMsg(true);
+    if (wasAllComplete) {
+      dismissLearn();
+    } else {
+      setPracticeRemovedMsg(true);
+    }
   }
 
   if (!data) {

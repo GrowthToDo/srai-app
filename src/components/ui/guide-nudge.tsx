@@ -16,7 +16,8 @@ import { getNudge } from "@/lib/onboarding/guide";
  * The pulsing dot matches the sidebar next-step beacon so users connect the two.
  */
 export function GuideNudge() {
-  const { guide, practice, visits, markStaffReviewed } = useOnboarding();
+  const { guide, practice, visits, markStaffReviewed, markLearnStep } =
+    useOnboarding();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -46,6 +47,30 @@ export function GuideNudge() {
           onClick={() => {
             markStaffReviewed();
             router.push("/schedule");
+          }}
+        >
+          {nudge.actionLabel}
+        </Button>
+      )}
+      {nudge.action === "learn-census-done" && nudge.actionLabel && (
+        <Button
+          size="sm"
+          className="ml-auto shrink-0"
+          onClick={() => {
+            markLearnStep("census");
+            router.push("/audit");
+          }}
+        >
+          {nudge.actionLabel}
+        </Button>
+      )}
+      {nudge.action === "learn-audit-done" && nudge.actionLabel && (
+        <Button
+          size="sm"
+          className="ml-auto shrink-0"
+          onClick={() => {
+            markLearnStep("audit");
+            router.push("/dashboard");
           }}
         >
           {nudge.actionLabel}
