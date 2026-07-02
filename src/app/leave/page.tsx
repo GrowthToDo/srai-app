@@ -278,7 +278,11 @@ export default function LeavePage() {
                 {filter === "all" ? "No leave requests" : `No ${filter} leave requests`}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {filter === "pending" ? "All caught up — no requests awaiting approval." : "Leave requests will appear here once submitted."}
+                {filter === "pending"
+                  ? "All caught up — no requests awaiting approval."
+                  : filter === "all"
+                  ? "Nurse time-off requests appear here; approving one automatically blocks scheduling and creates coverage where needed."
+                  : "Leave requests will appear here once submitted."}
               </p>
             </div>
           ) : (

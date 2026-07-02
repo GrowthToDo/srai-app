@@ -363,7 +363,11 @@ export default function SwapsPage() {
                 {filter === "all" ? "No swap requests" : `No ${filter} swap requests`}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {filter === "pending" ? "No swaps awaiting review." : "Swap requests will appear here once submitted."}
+                {filter === "pending"
+                  ? "No swaps awaiting review."
+                  : filter === "all"
+                  ? "When two nurses want to trade shifts, the request lands here — compliance rules are checked automatically."
+                  : "Swap requests will appear here once submitted."}
               </p>
             </div>
           ) : (

@@ -277,7 +277,11 @@ export default function CoverageRequestsPage() {
                 </svg>
               </div>
               <p className="font-medium">No {filter !== "all" ? filter.replace("_", " ") : ""} coverage requests</p>
-              <p className="mt-1 text-sm text-muted-foreground">Shifts needing coverage will appear here</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {filter === "all" || filter === "pending_approval"
+                  ? "Coverage requests appear here when you need staff beyond the schedule — including leave approved more than 7 days out."
+                  : "Shifts needing coverage will appear here"}
+              </p>
             </div>
           ) : (
             <Table>

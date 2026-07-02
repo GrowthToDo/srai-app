@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GuideNudge } from "@/components/ui/guide-nudge";
 import { GuideDot } from "@/components/ui/guide-dot";
+import { useToast } from "@/components/ui/toast";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
 import { AssignmentDialog } from "@/components/schedule/assignment-dialog";
@@ -67,6 +68,7 @@ interface EvalResult {
 export default function ScheduleBuilderPage() {
   const params = useParams();
   const router = useRouter();
+  const { addToast } = useToast();
   const { guide } = useOnboarding();
   const scheduleId = params.id as string;
 
@@ -150,13 +152,34 @@ export default function ScheduleBuilderPage() {
   async function handlePublish() {
     setPublishing(true);
     const newStatus = schedule?.status === "published" ? "draft" : "published";
-    await fetch(`/api/schedules/${scheduleId}`, {
+    const res = await fetch(`/api/schedules/${scheduleId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      addToast({
+        title: "Could not update schedule",
+        description: data.error ?? "Unknown error",
+        variant: "error",
+      });
+      setPublishing(false);
+      return;
+    }
     await fetchSchedule();
     setPublishing(false);
+    if (newStatus === "published") {
+      addToast({
+        title: "Schedule published — nurses can now see it",
+        variant: "success",
+      });
+    } else {
+      addToast({
+        title: "Schedule unpublished — back to draft",
+        variant: "default",
+      });
+    }
     // Move the sidebar next-step beacon + dashboard checklist forward.
     window.dispatchEvent(new Event("onboarding-refresh"));
   }

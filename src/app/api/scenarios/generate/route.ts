@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { generationJob, schedule } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { generationJob, schedule, shift, staff } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { runGenerationJob } from "@/lib/engine/scheduler/runner";
 
@@ -25,6 +25,38 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Cannot regenerate a published schedule. Unpublish it first to make changes." },
       { status: 409 }
+    );
+  }
+
+  // Preflight: generation needs staff and shifts to work with. Fail here with
+  // a plain-language message instead of queueing a job that dies opaquely.
+  // Staff-per-unit mirrors /api/units: active staff whose homeUnit matches.
+  const activeUnitStaff = db
+    .select({ id: staff.id })
+    .from(staff)
+    .where(and(eq(staff.isActive, true), eq(staff.homeUnit, scheduleRecord.unit)))
+    .all();
+  if (activeUnitStaff.length === 0) {
+    return NextResponse.json(
+      {
+        error: `No active staff are assigned to ${scheduleRecord.unit}. Import your roster or add staff before generating.`,
+      },
+      { status: 422 }
+    );
+  }
+
+  const scheduleShifts = db
+    .select({ id: shift.id })
+    .from(shift)
+    .where(eq(shift.scheduleId, scheduleId))
+    .all();
+  if (scheduleShifts.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "This schedule period has no shifts yet. Check the schedule's date range and shift definitions.",
+      },
+      { status: 422 }
     );
   }
 

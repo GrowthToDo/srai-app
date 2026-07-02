@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GuideNudge } from "@/components/ui/guide-nudge";
+import { useToast } from "@/components/ui/toast";
 import {
   Select,
   SelectContent,
@@ -82,6 +83,7 @@ function ScoreBar({ label, score }: { label: string; score: number | null }) {
 
 function ScenariosPageContent() {
   const searchParams = useSearchParams();
+  const { addToast } = useToast();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string>(
     searchParams.get("scheduleId") ?? ""
@@ -174,6 +176,13 @@ function ScenariosPageContent() {
       return;
     }
     await fetchScenarios(selectedScheduleId);
+    const applied = scenarios.find((s) => s.id === scenarioId);
+    addToast({
+      title: applied?.name
+        ? `${applied.name} variant applied to the schedule`
+        : "Variant applied to the schedule",
+      variant: "success",
+    });
     // Applying a variant changes assignments — advance the onboarding beacon.
     window.dispatchEvent(new Event("onboarding-refresh"));
     setApplyingId(null);

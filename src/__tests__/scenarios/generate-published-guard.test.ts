@@ -17,6 +17,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockScheduleGet = vi.hoisted(() => vi.fn());
 const mockJobsAll = vi.hoisted(() => vi.fn());
+const mockStaffAll = vi.hoisted(() => vi.fn());
+const mockShiftsAll = vi.hoisted(() => vi.fn());
 const mockInsertReturningGet = vi.hoisted(() => vi.fn());
 const mockRunGenerationJob = vi.hoisted(() => vi.fn(async () => undefined));
 const mockUpdateSet = vi.hoisted(() => vi.fn());
@@ -33,11 +35,14 @@ vi.mock("next/server", () => ({
 
 vi.mock("drizzle-orm", () => ({
   eq: vi.fn((a: unknown, b: unknown) => ({ _eq: [a, b] })),
+  and: vi.fn((...args: unknown[]) => ({ _and: args })),
 }));
 
 vi.mock("@/db/schema", () => ({
   schedule: { _table: "schedule", id: "sched$id", status: "sched$status" },
   generationJob: { _table: "generationJob", id: "job$id", scheduleId: "job$scheduleId", status: "job$status" },
+  staff: { _table: "staff", id: "staff$id", isActive: "staff$isActive", homeUnit: "staff$homeUnit" },
+  shift: { _table: "shift", id: "shift$id", scheduleId: "shift$scheduleId" },
 }));
 
 vi.mock("@/db", () => ({
@@ -46,7 +51,14 @@ vi.mock("@/db", () => ({
       from: (table: { _table: string }) => ({
         where: () => ({
           get: table._table === "schedule" ? mockScheduleGet : vi.fn(),
-          all: table._table === "generationJob" ? mockJobsAll : vi.fn(() => []),
+          all:
+            table._table === "generationJob"
+              ? mockJobsAll
+              : table._table === "staff"
+              ? mockStaffAll
+              : table._table === "shift"
+              ? mockShiftsAll
+              : vi.fn(() => []),
         }),
       }),
     }),
@@ -88,6 +100,9 @@ describe("POST /api/scenarios/generate — published-schedule guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockJobsAll.mockReturnValue([]);
+    // Preflight passes by default: the unit has active staff and shifts exist.
+    mockStaffAll.mockReturnValue([{ id: "staff-001" }]);
+    mockShiftsAll.mockReturnValue([{ id: "shift-001" }]);
     mockInsertReturningGet.mockReturnValue({ id: "job-001" });
   });
 
@@ -139,6 +154,30 @@ describe("POST /api/scenarios/generate — published-schedule guard", () => {
       (c) => (c[0] as { status?: string }).status === "failed"
     );
     expect(failedUpdates.length).toBe(1);
+  });
+
+  it("returns 422 and creates no job when the unit has no active staff", async () => {
+    mockScheduleGet.mockReturnValue({ id: SCHEDULE_ID, status: "draft", unit: "ICU" });
+    mockStaffAll.mockReturnValue([]);
+    const res = (await POST(makeRequest({ scheduleId: SCHEDULE_ID }))) as unknown as {
+      status: number;
+      _data: { error: string };
+    };
+    expect(res.status).toBe(422);
+    expect(res._data.error).toContain("No active staff are assigned to ICU");
+    expect(mockInsertReturningGet).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 and creates no job when the schedule period has no shifts", async () => {
+    mockScheduleGet.mockReturnValue({ id: SCHEDULE_ID, status: "draft", unit: "ICU" });
+    mockShiftsAll.mockReturnValue([]);
+    const res = (await POST(makeRequest({ scheduleId: SCHEDULE_ID }))) as unknown as {
+      status: number;
+      _data: { error: string };
+    };
+    expect(res.status).toBe(422);
+    expect(res._data.error).toMatch(/no shifts yet/i);
+    expect(mockInsertReturningGet).not.toHaveBeenCalled();
   });
 
   it("still returns 409 for a recent running job", async () => {

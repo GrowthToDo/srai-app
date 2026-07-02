@@ -304,7 +304,7 @@ export default function CalloutsPage() {
                 </svg>
               </div>
               <p className="font-medium">No callouts recorded</p>
-              <p className="mt-1 text-sm text-muted-foreground">When staff call out, they&apos;ll appear here</p>
+              <p className="mt-1 text-sm text-muted-foreground">When a nurse can&apos;t make a scheduled shift, log it here — you&apos;ll get ranked replacement candidates.</p>
             </div>
           ) : (
             <Table>
