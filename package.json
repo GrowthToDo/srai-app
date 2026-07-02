@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run test && npm run db:push && next build",
+    "build": "next build",
+    "build:checked": "npm run test && npm run db:push && next build",
+    "prestart": "drizzle-kit push",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
