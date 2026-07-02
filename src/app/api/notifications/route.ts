@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { staffLeave, openShift, callout, shiftSwapRequest, staff, prnAvailability, unit, schedule } from "@/db/schema";
-import { eq, or, count, and } from "drizzle-orm";
+import { staffLeave, openShift, callout, shiftSwapRequest, staff, prnAvailability, unit, schedule, assignment } from "@/db/schema";
+import { eq, or, count, countDistinct, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -49,6 +49,11 @@ export async function GET() {
     .from(schedule)
     .where(eq(schedule.status, "published"))
     .get();
+  // Schedules that have at least one assignment — i.e. generation has been run.
+  const generatedCount = db
+    .select({ count: countDistinct(assignment.scheduleId) })
+    .from(assignment)
+    .get();
 
   return NextResponse.json({
     pendingLeaveCount: pendingLeave?.count ?? 0,
@@ -60,6 +65,7 @@ export async function GET() {
       staffCount: staffCount?.count ?? 0,
       unitsCount: unitsCount?.count ?? 0,
       scheduleCount: scheduleCount?.count ?? 0,
+      generatedCount: generatedCount?.count ?? 0,
       publishedCount: publishedCount?.count ?? 0,
     },
   });

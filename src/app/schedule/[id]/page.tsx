@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FirstRunNudge } from "@/components/ui/first-run-nudge";
 import { ScheduleGrid } from "@/components/schedule/schedule-grid";
 import { AssignmentDialog } from "@/components/schedule/assignment-dialog";
 import { ShiftViolationsModal } from "@/components/schedule/shift-violations-modal";
@@ -153,6 +154,8 @@ export default function ScheduleBuilderPage() {
     });
     await fetchSchedule();
     setPublishing(false);
+    // Move the sidebar next-step beacon + dashboard checklist forward.
+    window.dispatchEvent(new Event("onboarding-refresh"));
   }
 
   function handleExport() {
@@ -349,6 +352,15 @@ export default function ScheduleBuilderPage() {
           )}
         </div>
       </div>
+
+      <FirstRunNudge
+        show={!!schedule && schedule.status !== "published"}
+        message={
+          totalAssignments === 0
+            ? "Click Generate Schedule (top right) — the AI fills the grid in about a minute."
+            : "Review the grid below, then hit Publish (top right) to make the schedule official."
+        }
+      />
 
       {/* Summary cards */}
       <div className="mb-6 grid grid-cols-3 gap-4">

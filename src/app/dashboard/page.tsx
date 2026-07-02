@@ -46,6 +46,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [gettingStartedDismissed, setGettingStartedDismissed] = useState(false);
   const [onboarding, setOnboarding] = useState<{ scheduleCount: number; publishedCount: number } | null>(null);
+  const [learnDismissed, setLearnDismissed] = useState(false);
+  const [learnVisited, setLearnVisited] = useState<Record<string, boolean>>({});
 
   // Mock sparkline data (in production, fetch from API)
   const sparklineData = {
@@ -66,8 +68,17 @@ export default function DashboardPage() {
       .then((j) => setOnboarding(j.onboarding ?? null))
       .catch(() => {});
     setGettingStartedDismissed(localStorage.getItem("gettingStartedDismissed") === "true");
-    // The sidebar Help menu re-opens the checklist from any page.
-    const reopen = () => setGettingStartedDismissed(false);
+    setLearnDismissed(localStorage.getItem("learnDailyOpsDismissed") === "true");
+    try {
+      setLearnVisited(JSON.parse(localStorage.getItem("learnVisited") ?? "{}"));
+    } catch {
+      /* corrupted flag — start fresh */
+    }
+    // The sidebar Help menu re-opens both checklists from any page.
+    const reopen = () => {
+      setGettingStartedDismissed(false);
+      setLearnDismissed(false);
+    };
     window.addEventListener("reopen-getting-started", reopen);
     return () => window.removeEventListener("reopen-getting-started", reopen);
   }, []);
@@ -76,6 +87,27 @@ export default function DashboardPage() {
     localStorage.setItem("gettingStartedDismissed", "true");
     setGettingStartedDismissed(true);
   }
+
+  function markLearnVisited(key: string) {
+    const next = { ...learnVisited, [key]: true };
+    setLearnVisited(next);
+    localStorage.setItem("learnVisited", JSON.stringify(next));
+  }
+
+  function dismissLearn() {
+    localStorage.setItem("learnDailyOpsDismissed", "true");
+    setLearnDismissed(true);
+  }
+
+  // Phase 2 of onboarding: once the first schedule is live, teach the five
+  // daily-management tools (incl. how a callout differs from an open shift).
+  const LEARN_ITEMS = [
+    { key: "leave", href: "/leave", title: "Approve time off", blurb: "Nurses' leave requests. Approving one automatically blocks scheduling them on those dates." },
+    { key: "callouts", href: "/callouts", title: "Handle a callout", blurb: "A nurse can't make a shift they're already scheduled for. Log it and you'll get ranked replacement candidates." },
+    { key: "open-shifts", href: "/open-shifts", title: "Fill an open shift", blurb: "Different from a callout: an open shift is unassigned coverage you need (extra demand), not a dropped shift." },
+    { key: "swaps", href: "/swaps", title: "Review a shift swap", blurb: "Two nurses trade shifts and you approve or deny — compliance rules are checked automatically." },
+    { key: "census", href: "/census", title: "Adjust the census", blurb: "Update patient counts per shift. Higher census raises required staffing and flags gaps immediately." },
+  ];
 
   if (!data) {
     return (
@@ -99,7 +131,7 @@ export default function DashboardPage() {
     { label: "Import your staff roster", done: data.staffCount > 0, href: "/setup" },
     { label: "Review units & rules", done: data.unitsCount > 0, href: "/settings/units" },
     { label: "Create a schedule period", done: (onboarding?.scheduleCount ?? 0) > 0 || data.scheduleInfo !== null, href: "/schedule" },
-    { label: "Generate the schedule", done: data.fillRate > 0 || hasPublished, href: data.scheduleInfo ? `/schedule/${data.scheduleInfo.id}` : "/schedule" },
+    { label: "Generate the schedule", done: data.fillRate > 0 || hasPublished, href: "/scenarios" },
     { label: "Review and publish it", done: hasPublished, href: data.scheduleInfo ? `/schedule/${data.scheduleInfo.id}` : "/schedule" },
   ];
   const allStepsDone = gettingStartedSteps.every((s) => s.done);
@@ -185,6 +217,57 @@ export default function DashboardPage() {
                 </ol>
               </div>
               <Button variant="ghost" size="sm" className="text-amber-700 hover:text-amber-900" onClick={dismissGettingStarted}>
+                Dismiss
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Phase 2 — schedule is live; teach the daily-management tools */}
+      {hasPublished && !learnDismissed && !LEARN_ITEMS.every((i) => learnVisited[i.key]) && (
+        <Card className="mb-6 border-2 border-primary/25 bg-accent/40 animate-slide-up">
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="font-semibold">Learn daily management</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Your schedule is live. These five tools handle everything that changes after
+                  publishing — click each one to see how it works.
+                </p>
+                <ul className="mt-4 space-y-3">
+                  {LEARN_ITEMS.map((item) => (
+                    <li key={item.key} className="flex items-start gap-3">
+                      <span
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                          learnVisited[item.key]
+                            ? "bg-primary text-primary-foreground"
+                            : "border-2 border-primary/40 text-primary"
+                        }`}
+                      >
+                        {learnVisited[item.key] ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                        ) : (
+                          "•"
+                        )}
+                      </span>
+                      <div>
+                        <Link
+                          href={item.href}
+                          onClick={() => markLearnVisited(item.key)}
+                          className="text-sm font-medium underline underline-offset-2 hover:text-primary"
+                        >
+                          {item.title} →
+                        </Link>
+                        <p className="text-xs text-muted-foreground">{item.blurb}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Button variant="ghost" size="sm" onClick={dismissLearn}>
                 Dismiss
               </Button>
             </div>

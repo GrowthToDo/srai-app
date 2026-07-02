@@ -150,6 +150,8 @@ export default function SetupPage() {
       if (data.success) {
         setPreview(null);
         setSelectedFile(null);
+        // Advance the sidebar next-step beacon without a navigation.
+        window.dispatchEvent(new Event("onboarding-refresh"));
       }
     } catch (error) {
       console.error("Import error:", error);
@@ -372,9 +374,16 @@ export default function SetupPage() {
                 <p className="text-muted-foreground mb-1">
                   Imported {result.imported?.staff} staff, {result.imported?.units} units, and {result.imported?.holidays} holidays.
                 </p>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Ready to build your first schedule?
-                </p>
+                <div className="mx-auto mb-6 flex max-w-md items-center gap-2.5 rounded-lg border border-primary/30 bg-accent/50 px-3.5 py-2.5 text-left text-sm">
+                  <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-70 motion-reduce:hidden" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+                  </span>
+                  <span>
+                    <b>What&apos;s next:</b> follow the pulsing green dot in the sidebar — it always
+                    points to your next step. Right now: create a schedule period.
+                  </span>
+                </div>
                 <div className="flex flex-col items-center gap-2">
                   <Button onClick={() => window.location.href = "/schedule"}>
                     Create Your First Schedule →

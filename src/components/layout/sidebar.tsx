@@ -15,14 +15,16 @@ interface NotificationCounts {
     staffCount: number;
     unitsCount: number;
     scheduleCount: number;
+    generatedCount: number;
     publishedCount: number;
   };
 }
 
 /**
  * "Next step" guide beacon: until the manager completes one full cycle
- * (first published schedule), a gently pulsing dot marks the nav item to
- * visit next. Returns the href to mark, or null once the cycle is done.
+ * (first published schedule), a pulsing dot marks the nav item to visit next.
+ * Moves with real progress: Setup → Schedule (create) → Schedule Variants
+ * (generate) → Schedule (publish). Returns null once the cycle is done.
  */
 function nextStepHref(c: NotificationCounts | null): string | null {
   const o = c?.onboarding;
@@ -30,7 +32,8 @@ function nextStepHref(c: NotificationCounts | null): string | null {
   if (o.publishedCount > 0) return null; // first full cycle complete — retire the beacon
   if (o.staffCount === 0 || o.unitsCount === 0) return "/setup";
   if (o.scheduleCount === 0) return "/schedule";
-  return "/schedule"; // draft exists → generate + publish live on the schedule page
+  if (o.generatedCount === 0) return "/scenarios"; // generate the schedule next
+  return "/schedule"; // generated → review + publish on the schedule page
 }
 
 const BADGE_COUNTS: Record<string, (c: NotificationCounts) => number> = {
@@ -152,6 +155,25 @@ export function Sidebar() {
       .catch(() => {});
   }, [pathname]);
 
+  // Pages dispatch this after milestone actions (import done, generation
+  // finished, published) so the next-step beacon moves without a navigation.
+  useEffect(() => {
+    const refresh = () => {
+      fetch("/api/notifications")
+        .then((r) => r.json())
+        .then(setCounts)
+        .catch(() => {});
+    };
+    window.addEventListener("onboarding-refresh", refresh);
+    return () => window.removeEventListener("onboarding-refresh", refresh);
+  }, []);
+
+  // Real modifier key for shortcut labels: ⌘ on Mac, Ctrl on Windows/Linux.
+  const [modKey, setModKey] = useState("Ctrl");
+  useEffect(() => {
+    if (/Mac|iP(hone|ad|od)/.test(navigator.userAgent)) setModKey("⌘");
+  }, []);
+
   return (
     <>
       {/* Mobile Toggle Button */}
@@ -207,12 +229,12 @@ export function Sidebar() {
                     <span className="flex-1">{item.label}</span>
                     {!isActive && item.href === nextStepHref(counts) && (
                       <span
-                        className="relative flex h-2 w-2"
+                        className="relative flex h-3.5 w-3.5 items-center justify-center"
                         title="Suggested next step"
                         aria-label="Suggested next step"
                       >
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60 motion-reduce:hidden" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75 motion-reduce:hidden" />
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-primary ring-2 ring-primary/25" />
                       </span>
                     )}
                     {counts && BADGE_COUNTS[item.href] && BADGE_COUNTS[item.href](counts) > 0 && (
@@ -255,6 +277,7 @@ export function Sidebar() {
                   className="flex w-full items-center rounded px-2.5 py-2 text-left hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     localStorage.removeItem("gettingStartedDismissed");
+                    localStorage.removeItem("learnDailyOpsDismissed");
                     window.dispatchEvent(new Event("reopen-getting-started"));
                     setHelpOpen(false);
                     router.push("/dashboard");
@@ -271,7 +294,7 @@ export function Sidebar() {
                   }}
                 >
                   Quick navigation
-                  <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+                  <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px]">{modKey === "⌘" ? "⌘K" : "Ctrl+K"}</kbd>
                 </button>
                 <button
                   type="button"

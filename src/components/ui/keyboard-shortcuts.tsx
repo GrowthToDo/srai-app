@@ -21,12 +21,24 @@ const shortcuts: Shortcut[] = [
   { key: "⌘ F", description: "Search", category: "Actions" },
 ]
 
+/** "⌘" on Mac, "Ctrl" on Windows/Linux — shown labels match the real keys. */
+function useModKeyLabel() {
+  const [label, setLabel] = useState("Ctrl")
+  useEffect(() => {
+    if (/Mac|iP(hone|ad|od)/.test(navigator.userAgent)) setLabel("⌘")
+  }, [])
+  return label
+}
+
 export function KeyboardShortcutsPanel() {
   const [open, setOpen] = useState(false)
+  const modKey = useModKeyLabel()
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+      // NOTE: no shiftKey guard — on standard layouts "?" IS Shift+/ so the key
+      // never fires with the guard in place (this is why "?" did nothing on Windows).
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
         // Check if we're not in an input/textarea
         const target = e.target as HTMLElement
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
@@ -105,7 +117,7 @@ export function KeyboardShortcutsPanel() {
                           key={j}
                           className="px-2.5 py-1.5 text-xs font-semibold bg-background rounded border-2 border-primary/20 shadow-sm"
                         >
-                          {key}
+                          {key === "⌘" ? modKey : key}
                         </kbd>
                       ))}
                     </div>
