@@ -12,8 +12,13 @@ import { describe, it, expect } from "vitest";
 import {
   deriveGuide,
   getNudge,
+  learnProgress,
+  nextIncompleteStep,
+  LEARN_STEPS,
   type OnboardingCounts,
   type GuideFlags,
+  type PracticeStatus,
+  type LearnVisitFlags,
 } from "@/lib/onboarding/guide";
 
 const noFlags: GuideFlags = {
@@ -248,5 +253,256 @@ describe("consistency — nudge targets never contradict the beacon (S0–S4)", 
         expect(g.beaconHref).toBe("/schedule");
       }
     }
+  });
+});
+
+// ===========================================================================
+// LEARN-PHASE GUIDED LOOP (S6)
+// ===========================================================================
+
+const noVisits: LearnVisitFlags = {
+  callouts: false,
+  openShifts: false,
+  census: false,
+  audit: false,
+};
+
+function practiceStatus(
+  overrides: Partial<PracticeStatus["items"]> = {},
+  active = true
+): PracticeStatus {
+  return {
+    active,
+    items: {
+      leaveA: { id: "la", status: "pending" },
+      leaveB: { id: "lb", status: "pending" },
+      swap: { id: "sw", status: "pending" },
+      generatedCallout: null,
+      generatedOpenShift: null,
+      ...overrides,
+    },
+  };
+}
+
+const celebrated: GuideFlags = { staffReviewed: true, celebrated: true, dismissed: false };
+const s6Counts = counts({
+  scheduleCount: 1,
+  publishedCount: 1,
+  activeSchedule: publishedSched,
+});
+
+describe("learnProgress — step completion mapping", () => {
+  it("nothing done when practice fresh (all pending, no generated records)", () => {
+    const p = learnProgress(practiceStatus(), noVisits);
+    expect(p.completedCount).toBe(0);
+    expect(p.next).toBe("leave");
+    expect(p.allComplete).toBe(false);
+  });
+
+  it("leave step needs BOTH practice leaves approved", () => {
+    const oneApproved = learnProgress(
+      practiceStatus({ leaveA: { id: "la", status: "approved" } }),
+      noVisits
+    );
+    expect(oneApproved.done.leave).toBe(false);
+
+    const bothApproved = learnProgress(
+      practiceStatus({
+        leaveA: { id: "la", status: "approved" },
+        leaveB: { id: "lb", status: "approved" },
+      }),
+      noVisits
+    );
+    expect(bothApproved.done.leave).toBe(true);
+    expect(bothApproved.next).toBe("callouts");
+  });
+
+  it("callouts step: generated callout must exist AND be visited/acted", () => {
+    // Exists but not visited and still open → not done.
+    const notYet = learnProgress(
+      practiceStatus({ generatedCallout: { id: "c", status: "open" } }),
+      noVisits
+    );
+    expect(notYet.done.callouts).toBe(false);
+
+    // Visited → done.
+    const visited = learnProgress(
+      practiceStatus({ generatedCallout: { id: "c", status: "open" } }),
+      { ...noVisits, callouts: true }
+    );
+    expect(visited.done.callouts).toBe(true);
+
+    // Acted on (status moved off "open") → done even without a visit flag.
+    const acted = learnProgress(
+      practiceStatus({ generatedCallout: { id: "c", status: "filled" } }),
+      noVisits
+    );
+    expect(acted.done.callouts).toBe(true);
+  });
+
+  it("open-shifts step: generated open shift must exist AND be visited/acted", () => {
+    const notYet = learnProgress(
+      practiceStatus({ generatedOpenShift: { id: "o", status: "pending_approval" } }),
+      noVisits
+    );
+    expect(notYet.done["open-shifts"]).toBe(false);
+
+    const acted = learnProgress(
+      practiceStatus({ generatedOpenShift: { id: "o", status: "filled" } }),
+      noVisits
+    );
+    expect(acted.done["open-shifts"]).toBe(true);
+  });
+
+  it("swap step done once the swap is no longer pending", () => {
+    expect(learnProgress(practiceStatus({ swap: { id: "sw", status: "approved" } }), noVisits).done.swaps).toBe(true);
+    expect(learnProgress(practiceStatus({ swap: { id: "sw", status: "denied" } }), noVisits).done.swaps).toBe(true);
+    expect(learnProgress(practiceStatus({ swap: { id: "sw", status: "pending" } }), noVisits).done.swaps).toBe(false);
+  });
+
+  it("census + audit steps are visit-driven", () => {
+    const p = learnProgress(practiceStatus(), { ...noVisits, census: true, audit: true });
+    expect(p.done.census).toBe(true);
+    expect(p.done.audit).toBe(true);
+  });
+
+  it("all six complete → allComplete, next null", () => {
+    const p = learnProgress(
+      practiceStatus({
+        leaveA: { id: "la", status: "approved" },
+        leaveB: { id: "lb", status: "approved" },
+        generatedCallout: { id: "c", status: "filled" },
+        generatedOpenShift: { id: "o", status: "filled" },
+        swap: { id: "sw", status: "approved" },
+      }),
+      { callouts: true, openShifts: true, census: true, audit: true }
+    );
+    expect(p.completedCount).toBe(6);
+    expect(p.allComplete).toBe(true);
+    expect(p.next).toBeNull();
+  });
+
+  it("nextIncompleteStep walks the ordered steps", () => {
+    // leave done → next callouts
+    expect(
+      nextIncompleteStep(
+        practiceStatus({
+          leaveA: { id: "la", status: "approved" },
+          leaveB: { id: "lb", status: "approved" },
+        }),
+        noVisits
+      )
+    ).toBe("callouts");
+  });
+});
+
+describe("deriveGuide S6 — beacon points at the next incomplete step", () => {
+  it("practice not started → beacon points at the dashboard Learn card", () => {
+    const g = deriveGuide(s6Counts, celebrated, practiceStatus({}, false), noVisits);
+    expect(g.stage).toBe("S6");
+    expect(g.beaconHref).toBe("/dashboard");
+  });
+
+  it("practice active, nothing done → beacon at /leave (step 1)", () => {
+    const g = deriveGuide(s6Counts, celebrated, practiceStatus(), noVisits);
+    expect(g.beaconHref).toBe("/leave");
+  });
+
+  it("beacon advances to /callouts after both leaves approved", () => {
+    const g = deriveGuide(
+      s6Counts,
+      celebrated,
+      practiceStatus({
+        leaveA: { id: "la", status: "approved" },
+        leaveB: { id: "lb", status: "approved" },
+        generatedCallout: { id: "c", status: "open" },
+      }),
+      noVisits
+    );
+    expect(g.beaconHref).toBe("/callouts");
+  });
+
+  it("all steps complete → no beacon", () => {
+    const g = deriveGuide(
+      s6Counts,
+      celebrated,
+      practiceStatus({
+        leaveA: { id: "la", status: "approved" },
+        leaveB: { id: "lb", status: "approved" },
+        generatedCallout: { id: "c", status: "filled" },
+        generatedOpenShift: { id: "o", status: "filled" },
+        swap: { id: "sw", status: "approved" },
+      }),
+      { callouts: true, openShifts: true, census: true, audit: true }
+    );
+    expect(g.beaconHref).toBeNull();
+  });
+
+  it("every LEARN_STEPS href is a real route the beacon can point at", () => {
+    for (const step of LEARN_STEPS) {
+      expect(step.href.startsWith("/")).toBe(true);
+    }
+    expect(LEARN_STEPS.map((s) => s.key)).toEqual([
+      "leave",
+      "callouts",
+      "open-shifts",
+      "swaps",
+      "census",
+      "audit",
+    ]);
+  });
+});
+
+describe("getNudge S6 — practice-aware copy per page", () => {
+  it("suppressed entirely when practice is not active", () => {
+    expect(getNudge("S6", "/leave", null, practiceStatus({}, false), noVisits)).toBeNull();
+    expect(getNudge("S6", "/leave", null, null, noVisits)).toBeNull();
+  });
+
+  it("/leave before any approval prompts the short-notice one first with the 7-day threshold framing", () => {
+    const n = getNudge("S6", "/leave", null, practiceStatus(), noVisits);
+    expect(n?.message).toContain("short-notice");
+    expect(n?.message).toContain("7-day callout threshold");
+    expect(n?.message).toContain("Step 1 of 6");
+  });
+
+  it("/leave after Leave A approved explains the callout and points at the planned leave", () => {
+    const n = getNudge(
+      "S6",
+      "/leave",
+      null,
+      practiceStatus({ leaveA: { id: "la", status: "approved" } }),
+      noVisits
+    );
+    expect(n?.message).toContain("callout");
+    expect(n?.message).toContain("open shift");
+  });
+
+  it("/leave after both approved points to Callouts", () => {
+    const n = getNudge(
+      "S6",
+      "/leave",
+      null,
+      practiceStatus({
+        leaveA: { id: "la", status: "approved" },
+        leaveB: { id: "lb", status: "approved" },
+      }),
+      noVisits
+    );
+    expect(n?.href).toBe("/callouts");
+    expect(n?.linkLabel).toBe("Go to Callouts");
+  });
+
+  it("a wander page during S6 pulls the manager to the current step", () => {
+    const n = getNudge("S6", "/staff", null, practiceStatus(), noVisits);
+    expect(n?.message).toContain("Practice in progress");
+    expect(n?.href).toBe("/leave"); // next incomplete step
+  });
+
+  it("/census nudge teaches the tier lever, then advances to audit once visited", () => {
+    const before = getNudge("S6", "/census", null, practiceStatus(), noVisits);
+    expect(before?.message).toContain("census tier");
+    const after = getNudge("S6", "/census", null, practiceStatus(), { ...noVisits, census: true });
+    expect(after?.href).toBe("/audit");
   });
 });

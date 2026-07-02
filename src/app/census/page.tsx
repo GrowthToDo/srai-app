@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -197,6 +198,8 @@ export default function CensusPage() {
           requirements for that shift.
         </p>
       </div>
+
+      <GuideNudge />
 
       <Tabs defaultValue="daily">
         <TabsList>

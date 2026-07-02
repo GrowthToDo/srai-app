@@ -10,6 +10,7 @@ import { SkeletonCard } from "@/components/ui/skeleton";
 import { Sparkline } from "@/components/ui/sparkline";
 import { DoughnutChart } from "@/components/ui/doughnut-chart";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
+import { LEARN_STEPS, learnProgress } from "@/lib/onboarding/guide";
 
 interface DashboardData {
   staffCount: number;
@@ -44,10 +45,14 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
-  const { guide, counts, flags, dismiss } = useOnboarding();
+  const { guide, counts, flags, practice, visits, dismiss, startPractice, removePractice } =
+    useOnboarding();
   const [data, setData] = useState<DashboardData | null>(null);
   const [learnDismissed, setLearnDismissed] = useState(false);
-  const [learnVisited, setLearnVisited] = useState<Record<string, boolean>>({});
+  // Practice-mode UI state for the Learn card v2.
+  const [practiceError, setPracticeError] = useState<string | null>(null);
+  const [practiceBusy, setPracticeBusy] = useState(false);
+  const [practiceRemovedMsg, setPracticeRemovedMsg] = useState(false);
 
   // Mock sparkline data (in production, fetch from API)
   const sparklineData = {
@@ -63,11 +68,6 @@ export default function DashboardPage() {
       .then((r) => r.json())
       .then(setData);
     setLearnDismissed(localStorage.getItem("learnDailyOpsDismissed") === "true");
-    try {
-      setLearnVisited(JSON.parse(localStorage.getItem("learnVisited") ?? "{}"));
-    } catch {
-      /* corrupted flag — start fresh */
-    }
   }, []);
 
   // The sidebar Help menu re-opens both checklists from any page: clear the
@@ -83,26 +83,25 @@ export default function DashboardPage() {
     return () => window.removeEventListener("reopen-getting-started", reopen);
   }, []);
 
-  function markLearnVisited(key: string) {
-    const next = { ...learnVisited, [key]: true };
-    setLearnVisited(next);
-    localStorage.setItem("learnVisited", JSON.stringify(next));
-  }
-
   function dismissLearn() {
     localStorage.setItem("learnDailyOpsDismissed", "true");
     setLearnDismissed(true);
   }
 
-  // Phase 2 of onboarding: once the first schedule is live, teach the five
-  // daily-management tools (incl. how a callout differs from an open shift).
-  const LEARN_ITEMS = [
-    { key: "leave", href: "/leave", title: "Approve time off", blurb: "Nurses' leave requests. Approving one automatically blocks scheduling them on those dates." },
-    { key: "callouts", href: "/callouts", title: "Handle a callout", blurb: "A nurse can't make a shift they're already scheduled for. Log it and you'll get ranked replacement candidates." },
-    { key: "open-shifts", href: "/open-shifts", title: "Fill an open shift", blurb: "Different from a callout: an open shift is unassigned coverage you need (extra demand), not a dropped shift." },
-    { key: "swaps", href: "/swaps", title: "Review a shift swap", blurb: "Two nurses trade shifts and you approve or deny — compliance rules are checked automatically." },
-    { key: "census", href: "/census", title: "Adjust the census", blurb: "Update patient counts per shift. Higher census raises required staffing and flags gaps immediately." },
-  ];
+  async function handleStartPractice() {
+    setPracticeError(null);
+    setPracticeBusy(true);
+    const err = await startPractice();
+    setPracticeBusy(false);
+    if (err) setPracticeError(err);
+  }
+
+  async function handleRemovePractice() {
+    setPracticeBusy(true);
+    await removePractice();
+    setPracticeBusy(false);
+    setPracticeRemovedMsg(true);
+  }
 
   if (!data) {
     return (
@@ -141,6 +140,10 @@ export default function DashboardPage() {
     guide?.stage === "S3" ||
     guide?.stage === "S4";
   const showGettingStarted = inFirstCycleStages && !guide?.dismissed;
+
+  // Learn-card v2 progress: sourced from the shared learn-progress model (practice
+  // status + visit flags), not the retired click-tracking.
+  const learnDone = learnProgress(practice, visits);
 
   const attentionItems: { href: string; text: string; urgent: boolean; info?: boolean }[] = [
     ...(data.overstaffedShifts > 0 && data.scheduleInfo
@@ -229,48 +232,115 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Phase 2 — schedule is live; teach the daily-management tools */}
-      {guide?.showLearn && !learnDismissed && !LEARN_ITEMS.every((i) => learnVisited[i.key]) && (
+      {/* Phase 2 — schedule is live; learn the daily tools by ACTING on seeded
+          practice records built from the real roster (the guided practice loop). */}
+      {guide?.showLearn && !learnDismissed && !(learnDone.allComplete && !practice?.active) && (
         <Card className="mb-6 border-2 border-primary/25 bg-accent/40 animate-slide-up">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <p className="font-semibold">Learn daily management</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Your schedule is live. These five tools handle everything that changes after
-                  publishing — click each one to see how it works.
+                <p className="font-semibold">
+                  {learnDone.allComplete
+                    ? "You know the daily tools"
+                    : "Learn daily management"}
                 </p>
-                <ul className="mt-4 space-y-3">
-                  {LEARN_ITEMS.map((item) => (
-                    <li key={item.key} className="flex items-start gap-3">
-                      <span
-                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                          learnVisited[item.key]
-                            ? "bg-primary text-primary-foreground"
-                            : "border-2 border-primary/40 text-primary"
-                        }`}
-                      >
-                        {learnVisited[item.key] ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6 9 17l-5-5" />
-                          </svg>
-                        ) : (
-                          "•"
-                        )}
-                      </span>
-                      <div>
-                        <Link
-                          href={item.href}
-                          onClick={() => markLearnVisited(item.key)}
-                          className="text-sm font-medium underline underline-offset-2 hover:text-primary"
-                        >
-                          {item.title} →
-                        </Link>
-                        <p className="text-xs text-muted-foreground">{item.blurb}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+
+                {!practice?.active ? (
+                  <>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      Your schedule is live. These six tools handle everything that changes
+                      after publishing. Learn them by acting on a few clearly-labeled example
+                      requests.
+                    </p>
+                    <ul className="mt-4 space-y-3">
+                      {LEARN_STEPS.map((item) => (
+                        <li key={item.key} className="flex items-start gap-3">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-primary/40 text-[10px] font-bold text-primary">
+                            {item.order}
+                          </span>
+                          <div>
+                            <p className="text-sm font-medium">{item.title}</p>
+                            <p className="text-xs text-muted-foreground">{item.blurb}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-4 text-xs text-muted-foreground">
+                      Creates a few clearly-labeled example requests using your real roster.
+                      You&apos;ll approve them and watch what happens. Removable afterwards.
+                    </p>
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      onClick={handleStartPractice}
+                      disabled={practiceBusy}
+                    >
+                      {practiceBusy ? "Starting…" : "Start practice mode"}
+                    </Button>
+                    {practiceError && (
+                      <p className="mt-2 text-xs text-destructive">{practiceError}</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {learnDone.allComplete
+                        ? "Remove the practice entries to finish."
+                        : `Practice in progress — ${learnDone.completedCount} of 6 steps done. Follow the highlighted next step in the sidebar.`}
+                    </p>
+                    <ul className="mt-4 space-y-3">
+                      {LEARN_STEPS.map((item) => {
+                        const done = learnDone.done[item.key];
+                        return (
+                          <li key={item.key} className="flex items-start gap-3">
+                            <span
+                              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                                done
+                                  ? "bg-primary text-primary-foreground"
+                                  : item.key === learnDone.next
+                                  ? "border-2 border-primary text-primary ring-2 ring-primary/25"
+                                  : "border-2 border-primary/40 text-primary"
+                              }`}
+                            >
+                              {done ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M20 6 9 17l-5-5" />
+                                </svg>
+                              ) : (
+                                item.order
+                              )}
+                            </span>
+                            <div>
+                              <Link
+                                href={item.href}
+                                className={`text-sm font-medium underline underline-offset-2 hover:text-primary ${
+                                  done ? "text-muted-foreground line-through" : ""
+                                }`}
+                              >
+                                {item.title} →
+                              </Link>
+                              <p className="text-xs text-muted-foreground">{item.blurb}</p>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <Button
+                      variant="outline"
+                      className="mt-4"
+                      size="sm"
+                      onClick={handleRemovePractice}
+                      disabled={practiceBusy}
+                    >
+                      {practiceBusy ? "Removing…" : "Remove my practice entries"}
+                    </Button>
+                    {practiceRemovedMsg && (
+                      <p className="mt-2 text-xs text-green-700 dark:text-green-400">
+                        Practice entries removed — your schedule is back to normal.
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
               <Button variant="ghost" size="sm" onClick={dismissLearn}>
                 Dismiss

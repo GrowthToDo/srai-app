@@ -16,13 +16,19 @@ import { getNudge } from "@/lib/onboarding/guide";
  * The pulsing dot matches the sidebar next-step beacon so users connect the two.
  */
 export function GuideNudge() {
-  const { guide, markStaffReviewed } = useOnboarding();
+  const { guide, practice, visits, markStaffReviewed } = useOnboarding();
   const pathname = usePathname();
   const router = useRouter();
 
   if (!guide || guide.dismissed) return null;
 
-  const nudge = getNudge(guide.stage, pathname, guide.activeScheduleId);
+  const nudge = getNudge(
+    guide.stage,
+    pathname,
+    guide.activeScheduleId,
+    practice,
+    visits
+  );
   if (!nudge) return null;
 
   return (

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 
 interface SwapRequest {
   id: string;
@@ -186,6 +187,7 @@ export default function SwapsPage() {
       const reqName = req.requestor ? `${req.requestor.firstName} ${req.requestor.lastName}` : "Staff";
       addToast({ title: "Swap approved", description: `${reqName}'s swap request`, variant: "success" });
     }
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
   }
 
@@ -212,6 +214,7 @@ export default function SwapsPage() {
       const reqName = req.requestor ? `${req.requestor.firstName} ${req.requestor.lastName}` : "Staff";
       addToast({ title: "Swap denied", description: `${reqName}'s swap request`, variant: "warning" });
     }
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
   }
 
@@ -278,6 +281,7 @@ export default function SwapsPage() {
     } else {
       addToast({ title: "Failed to log swap request", variant: "error" });
     }
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
   }
 
@@ -298,6 +302,8 @@ export default function SwapsPage() {
         </div>
         <Button onClick={openLogDialog}>Log Swap Request</Button>
       </div>
+
+      <GuideNudge />
 
       <div className="mb-4 flex gap-2">
         {(["all", "pending", "approved", "denied"] as const).map((f) => (

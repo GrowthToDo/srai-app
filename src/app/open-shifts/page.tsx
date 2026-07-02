@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { format, parseISO } from "date-fns";
 import { EntityHistoryDialog } from "@/components/ui/entity-history-dialog";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 
 interface CandidateRecommendation {
   staffId: string;
@@ -155,6 +156,7 @@ export default function CoverageRequestsPage() {
       addToast({ title: "Failed to assign coverage", variant: "error" });
     }
     setSelectedRequest(null);
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
   }
 
@@ -179,6 +181,7 @@ export default function CoverageRequestsPage() {
     } else {
       addToast({ title: "Failed to cancel open shift", variant: "error" });
     }
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
   }
 
@@ -200,6 +203,8 @@ export default function CoverageRequestsPage() {
           </p>
         </div>
       </div>
+
+      <GuideNudge />
 
       {/* Filter tabs */}
       <div className="mb-4 flex gap-2">

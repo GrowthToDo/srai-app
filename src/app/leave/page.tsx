@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 
 interface LeaveRequest {
   id: string;
@@ -166,6 +167,7 @@ export default function LeavePage() {
         variant: "success",
       });
     }
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
   }
 
@@ -193,6 +195,7 @@ export default function LeavePage() {
     setDenyTarget(null);
     setDenialReason("");
     setDenyError("");
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
   }
 
@@ -213,6 +216,8 @@ export default function LeavePage() {
         </div>
         <Button onClick={() => setDialogOpen(true)}>New Leave Request</Button>
       </div>
+
+      <GuideNudge />
 
       <div className="mb-4 flex gap-2">
         {(["all", "pending", "approved", "denied"] as const).map((f) => (

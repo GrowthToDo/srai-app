@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 import { Label } from "@/components/ui/label";
 
 interface EscalationStep {
@@ -171,6 +172,7 @@ export default function CalloutsPage() {
     setChargeNurseRequired(data.chargeNurseRequired ?? false);
     setEscalationDialogOpen(true);
     addToast({ title: "Callout logged", description: `${reasonLabels[calloutReason] || calloutReason} — finding replacement candidates`, variant: "default" });
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchCallouts();
   }
 
@@ -197,6 +199,7 @@ export default function CalloutsPage() {
     setEscalationDialogOpen(false);
     setActiveCalloutId(null);
     setChargeNurseRequired(false);
+    window.dispatchEvent(new Event("onboarding-refresh"));
     fetchCallouts();
   }
 
@@ -250,6 +253,8 @@ export default function CalloutsPage() {
         <Button onClick={() => setLogDialogOpen(true)}>Log Callout</Button>
       </div>
 
+      <GuideNudge />
+
       <Card>
         <CardHeader>
           <CardTitle>Callout History</CardTitle>
@@ -265,7 +270,7 @@ export default function CalloutsPage() {
                 </svg>
               </div>
               <p className="font-medium">No callouts recorded</p>
-              <p className="mt-1 text-sm text-muted-foreground">When staff call out, they'll appear here</p>
+              <p className="mt-1 text-sm text-muted-foreground">When staff call out, they&apos;ll appear here</p>
             </div>
           ) : (
             <Table>

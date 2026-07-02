@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { GuideNudge } from "@/components/ui/guide-nudge";
 
 interface AuditEntry {
   id: string;
@@ -149,6 +150,8 @@ export default function AuditPage() {
           </Button>
         </div>
       </div>
+
+      <GuideNudge />
 
       <div className="mb-4 flex flex-wrap gap-3">
         <Select value={filterEntity} onValueChange={setFilterEntity}>

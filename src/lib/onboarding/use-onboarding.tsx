@@ -15,6 +15,8 @@ import {
   type Guide,
   type GuideFlags,
   type OnboardingCounts,
+  type PracticeStatus,
+  type LearnVisitFlags,
 } from "@/lib/onboarding/guide";
 
 /**
@@ -38,7 +40,17 @@ const FLAG_KEYS = {
   dismissed: "fcg:dismissed",
 } as const;
 
+// Per-step visit flags for the S6 practice loop. Set once a page is seen while
+// practice is active AND its prerequisite record exists.
+const LEARN_VISIT_KEYS = {
+  callouts: "fcg:learn:callouts",
+  openShifts: "fcg:learn:open-shifts",
+  census: "fcg:learn:census",
+  audit: "fcg:learn:audit",
+} as const;
+
 // Legacy dashboard/learn flags cleared on reset so a re-import truly starts over.
+// The fcg:learn:* practice visit flags are cleared explicitly on reset too.
 const LEGACY_KEYS = [
   "gettingStartedDismissed",
   "learnDailyOpsDismissed",
@@ -58,14 +70,32 @@ function readFlags(): GuideFlags {
   };
 }
 
+function readVisits(): LearnVisitFlags {
+  if (typeof window === "undefined") {
+    return { callouts: false, openShifts: false, census: false, audit: false };
+  }
+  return {
+    callouts: localStorage.getItem(LEARN_VISIT_KEYS.callouts) === "true",
+    openShifts: localStorage.getItem(LEARN_VISIT_KEYS.openShifts) === "true",
+    census: localStorage.getItem(LEARN_VISIT_KEYS.census) === "true",
+    audit: localStorage.getItem(LEARN_VISIT_KEYS.audit) === "true",
+  };
+}
+
 interface OnboardingContextValue {
   guide: Guide | null;
   counts: OnboardingCounts | null;
   flags: GuideFlags;
+  practice: PracticeStatus | null;
+  visits: LearnVisitFlags;
   markStaffReviewed: () => void;
   markCelebrated: () => void;
   dismiss: () => void;
   refresh: () => void;
+  /** Seed the practice chain then refresh. Returns the API error message on 4xx (e.g. 422). */
+  startPractice: () => Promise<string | null>;
+  /** Tear down the practice chain then refresh. */
+  removePractice: () => Promise<void>;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -73,10 +103,17 @@ const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [counts, setCounts] = useState<OnboardingCounts | null>(null);
+  const [practice, setPractice] = useState<PracticeStatus | null>(null);
   const [flags, setFlags] = useState<GuideFlags>(() => ({
     staffReviewed: false,
     celebrated: false,
     dismissed: false,
+  }));
+  const [visits, setVisits] = useState<LearnVisitFlags>(() => ({
+    callouts: false,
+    openShifts: false,
+    census: false,
+    audit: false,
   }));
   const lastFetchRef = useRef(0);
 
@@ -88,11 +125,19 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       .catch(() => {
         /* fail closed — leave counts as-is so guide stays null until we succeed */
       });
+    // Practice status rides the same refresh triggers as the counts.
+    fetch("/api/practice-examples")
+      .then((r) => r.json())
+      .then((j) => setPractice(j ?? null))
+      .catch(() => {
+        /* fail closed — leave practice as-is */
+      });
   }, []);
 
   // Initial fetch + hydrate flags from localStorage (client-only).
   useEffect(() => {
     setFlags(readFlags());
+    setVisits(readVisits());
     refresh();
   }, [refresh]);
 
@@ -103,10 +148,13 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("onboarding-refresh", onRefresh);
   }, [refresh]);
 
-  // Cross-tab flag changes: re-derive (no network needed).
+  // Cross-tab flag changes: re-derive (no network needed). fcg:learn:* keys feed
+  // the visit flags; the other fcg:* keys feed the stage flags.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key && e.key.startsWith("fcg:")) {
+      if (e.key && e.key.startsWith("fcg:learn:")) {
+        setVisits(readVisits());
+      } else if (e.key && e.key.startsWith("fcg:")) {
         setFlags(readFlags());
       }
     };
@@ -136,9 +184,12 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       // this render — no surface (especially the celebration modal) can act on
       // pre-reset counts while we clear flags and refetch.
       setCounts(null);
+      setPractice(null);
       Object.values(FLAG_KEYS).forEach((k) => localStorage.removeItem(k));
+      Object.values(LEARN_VISIT_KEYS).forEach((k) => localStorage.removeItem(k));
       LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
       setFlags(readFlags());
+      setVisits(readVisits());
       refresh();
     };
     window.addEventListener("onboarding-reset", onReset);
@@ -159,6 +210,62 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   const markCelebrated = useCallback(() => writeFlag("celebrated"), [writeFlag]);
   const dismiss = useCallback(() => writeFlag("dismissed"), [writeFlag]);
 
+  // Seed the practice chain. Returns null on success, or the API error message
+  // (e.g. the 422 "publish a schedule first" copy) so the Learn card can show it.
+  const startPractice = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/practice-examples", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data.error ?? "Could not start practice mode.";
+      }
+      refresh();
+      return null;
+    } catch {
+      return "Could not start practice mode.";
+    }
+  }, [refresh]);
+
+  // Tear down the practice chain and clear the local visit flags so a future
+  // practice run starts clean.
+  const removePractice = useCallback(async (): Promise<void> => {
+    try {
+      await fetch("/api/practice-examples", { method: "DELETE" });
+    } catch {
+      /* best effort — refresh below reconciles from the server */
+    }
+    Object.values(LEARN_VISIT_KEYS).forEach((k) => localStorage.removeItem(k));
+    setVisits(readVisits());
+    refresh();
+  }, [refresh]);
+
+  // Set the per-step visit flag when the manager lands on a learn page WHILE
+  // practice is active AND that step's prerequisite record exists. The census
+  // and audit steps have no server prerequisite (visiting completes them); the
+  // callouts/open-shifts steps require the generated record to exist first, so a
+  // premature visit does not skip the lesson.
+  useEffect(() => {
+    const p = practice;
+    if (!p?.active) return;
+    const mark = (key: string) => {
+      if (localStorage.getItem(key) !== "true") {
+        localStorage.setItem(key, "true");
+        setVisits(readVisits());
+      }
+    };
+    if (pathname.startsWith("/callouts") && p.items.generatedCallout) {
+      mark(LEARN_VISIT_KEYS.callouts);
+    } else if (pathname.startsWith("/open-shifts") && p.items.generatedOpenShift) {
+      mark(LEARN_VISIT_KEYS.openShifts);
+    } else if (pathname.startsWith("/census")) {
+      mark(LEARN_VISIT_KEYS.census);
+    } else if (pathname.startsWith("/audit")) {
+      mark(LEARN_VISIT_KEYS.audit);
+    }
+    // Re-run when the practice status changes too: a manager already sitting on
+    // /callouts when the generated callout appears should still be marked.
+  }, [pathname, practice]);
+
   // Route changes don't refetch on their own, but stale counts strand a surface
   // on a milestone that already advanced. On each pathname change, refetch when
   // the last fetch is older than the staleness window.
@@ -168,10 +275,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }
   }, [pathname, refresh]);
 
-  // guide is null while counts are still loading — surfaces fail closed.
+  // guide is null while counts are still loading — surfaces fail closed. The
+  // S6 beacon reads practice + visits to point at the next incomplete step.
   const guide = useMemo(
-    () => (counts ? deriveGuide(counts, flags) : null),
-    [counts, flags]
+    () => (counts ? deriveGuide(counts, flags, practice, visits) : null),
+    [counts, flags, practice, visits]
   );
 
   const value = useMemo<OnboardingContextValue>(
@@ -179,12 +287,28 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       guide,
       counts,
       flags,
+      practice,
+      visits,
       markStaffReviewed,
       markCelebrated,
       dismiss,
       refresh,
+      startPractice,
+      removePractice,
     }),
-    [guide, counts, flags, markStaffReviewed, markCelebrated, dismiss, refresh]
+    [
+      guide,
+      counts,
+      flags,
+      practice,
+      visits,
+      markStaffReviewed,
+      markCelebrated,
+      dismiss,
+      refresh,
+      startPractice,
+      removePractice,
+    ]
   );
 
   return (
