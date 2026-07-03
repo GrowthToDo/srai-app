@@ -9,6 +9,7 @@ import { InfoTip, TERM_HELP } from "@/components/ui/info-tip";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
+import { PresetChips } from "@/components/prn-availability/preset-chips";
 import { useToast } from "@/components/ui/toast";
 import {
   Dialog,
@@ -334,6 +335,12 @@ export default function AvailabilityPage() {
 
             <div className="space-y-1.5">
               <Label>Available days</Label>
+              <PresetChips
+                selected={selectedDates}
+                onChange={setSelectedDates}
+                from={from}
+                to={to}
+              />
               <div className="flex justify-center rounded-md border">
                 <Calendar
                   mode="multiple"

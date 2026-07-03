@@ -50,3 +50,54 @@ export function toIsoDate(date: Date): string {
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
+/**
+ * Every local-time date in the inclusive [from, to] window whose `getDay()`
+ * (0=Sun..6=Sat) is one of `weekdays`. Used to power the mass-select preset
+ * chips ("Weekdays", "Weekends", "Mon", etc.) on the PRN availability
+ * pickers. Comparisons stay in local time to match `toIsoDate`.
+ */
+export function datesForWeekdays(
+  weekdays: readonly number[],
+  from: Date,
+  to: Date
+): Date[] {
+  const wanted = new Set(weekdays);
+  const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+
+  const result: Date[] = [];
+  for (
+    let cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    if (wanted.has(cursor.getDay())) {
+      result.push(new Date(cursor));
+    }
+  }
+  return result;
+}
+
+/**
+ * Toggle a preset's dates against the current selection: if every date in
+ * `presetDates` is already selected (compared by `toIsoDate`), remove them
+ * all; otherwise add whichever preset dates are missing. Pure and
+ * dedupe-safe — used by the preset chip buttons above the multi-select
+ * calendars.
+ */
+export function togglePreset(current: Date[], presetDates: Date[]): Date[] {
+  const currentIso = new Set(current.map(toIsoDate));
+  const presetIso = new Set(presetDates.map(toIsoDate));
+
+  const allSelected =
+    presetIso.size > 0 &&
+    Array.from(presetIso).every((iso) => currentIso.has(iso));
+
+  if (allSelected) {
+    return current.filter((d) => !presetIso.has(toIsoDate(d)));
+  }
+
+  const additions = presetDates.filter((d) => !currentIso.has(toIsoDate(d)));
+  return [...current, ...additions];
+}

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { SignedOutCard } from "@/components/nurse/signed-out-card";
+import { PresetChips } from "@/components/prn-availability/preset-chips";
 import { serializeAvailableDates, toIsoDate } from "@/lib/prn-availability";
 
 interface PRNAvailability {
@@ -192,6 +193,12 @@ export default function MyAvailabilityPage() {
 
       <Card>
         <CardContent className="flex flex-col items-center gap-4 p-4">
+          <PresetChips
+            selected={selected}
+            onChange={setSelected}
+            from={from}
+            to={to}
+          />
           <Calendar
             mode="multiple"
             selected={selected}
