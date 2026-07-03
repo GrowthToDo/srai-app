@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "node scripts/verify.mjs",
+    "ground-truth": "node scripts/ground-truth.mjs",
     "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
