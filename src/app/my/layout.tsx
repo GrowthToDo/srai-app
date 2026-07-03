@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { CalendarDays, LogOut, Plane, Repeat } from "lucide-react";
 import { useSession } from "@/lib/auth/use-session";
 import { cn } from "@/lib/utils";
+import { NotificationBell } from "@/components/nurse/notification-bell";
 
 /**
  * Nurse portal chrome (Phase 2). Mobile-first: a compact top bar with the
@@ -56,16 +57,19 @@ export default function NurseLayout({
             </span>
           )}
         </div>
-        {user && (
-          <button
-            type="button"
-            onClick={() => logout()}
-            aria-label="Log out"
-            className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <LogOut className="size-5" />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          {user && (
+            <button
+              type="button"
+              onClick={() => logout()}
+              aria-label="Log out"
+              className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <LogOut className="size-5" />
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Content — pad the bottom so the sticky tab bar never covers it. */}

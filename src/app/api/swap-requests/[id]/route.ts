@@ -8,11 +8,17 @@ import {
   staffLeave,
   openShift,
   exceptionLog,
+  notification,
 } from "@/db/schema";
 import { eq, and, ne, lte, gte } from "drizzle-orm";
 import { weekBounds } from "@/lib/date/week";
 import { NextResponse } from "next/server";
 import { validateSwap, type SwapSideParams, type SwapViolation } from "@/lib/swap/validate-swap";
+import {
+  insertNotification,
+  composeSwapResponse,
+  composeSwapDecided,
+} from "@/lib/notifications/notify";
 
 export async function GET(
   _request: Request,
@@ -294,6 +300,21 @@ export async function PUT(
         })
         .run();
 
+      // Notify the requester that their target declined. Best-effort.
+      try {
+        insertNotification(
+          db,
+          notification,
+          composeSwapResponse({
+            requestingStaffId: existing.requestingStaffId,
+            targetName,
+            action: "decline",
+          })
+        );
+      } catch (err) {
+        console.error("[notify] swap_response (decline) failed", err);
+      }
+
       return NextResponse.json(declined);
     }
 
@@ -318,6 +339,21 @@ export async function PUT(
         performedBy: targetName,
       })
       .run();
+
+    // Notify the requester that their target accepted (awaiting manager). Best-effort.
+    try {
+      insertNotification(
+        db,
+        notification,
+        composeSwapResponse({
+          requestingStaffId: existing.requestingStaffId,
+          targetName,
+          action: "accept",
+        })
+      );
+    } catch (err) {
+      console.error("[notify] swap_response (accept) failed", err);
+    }
 
     return NextResponse.json(accepted);
   }
@@ -703,6 +739,29 @@ export async function PUT(
     .where(eq(shiftSwapRequest.id, id))
     .returning()
     .get();
+
+  // Phase 3 notification: a manager approved or denied the swap. Notify the
+  // requester, and the target too when the swap is directed. Only fire on a
+  // real transition into approved/denied so a repeated PUT doesn't re-notify.
+  // Best-effort — never break the manager decision.
+  if (
+    (body.status === "approved" || body.status === "denied") &&
+    existing.status !== body.status
+  ) {
+    try {
+      const recipients = new Set<string>([existing.requestingStaffId]);
+      if (existing.targetStaffId) recipients.add(existing.targetStaffId);
+      for (const sid of recipients) {
+        insertNotification(
+          db,
+          notification,
+          composeSwapDecided({ staffId: sid, outcome: body.status })
+        );
+      }
+    } catch (err) {
+      console.error("[notify] swap_decided failed", err);
+    }
+  }
 
   return NextResponse.json(updated);
 }

@@ -33,6 +33,16 @@ const NURSE_RULES: Rule[] = [
   // Auth endpoints are public anyway, but allow explicitly.
   { pattern: new RegExp(`^/api/auth(/.*)?$`), methods: ["*"], decision: "allow" },
 
+  // Nurse self-service surface. Everything under /api/my/* is scoped to the
+  // caller's own identity by each handler (via the x-staff-id header), so the
+  // whole subtree is reachable for nurses. Managers already allow everything.
+  // Covers: GET /api/my/swap-options, GET+PUT /api/my/notifications.
+  {
+    pattern: new RegExp(`^/api/my(/.*)?$`),
+    methods: ["*"],
+    decision: "allow",
+  },
+
   // A nurse reads their own schedule; the handler enforces id === x-staff-id.
   // GET /api/staff/[id]/schedule
   {

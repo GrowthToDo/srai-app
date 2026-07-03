@@ -1,8 +1,9 @@
 import { db } from "@/db";
-import { staffLeave, exceptionLog, assignment, shift, schedule, unit, openShift, callout, staff, shiftSwapRequest } from "@/db/schema";
+import { staffLeave, exceptionLog, assignment, shift, schedule, unit, openShift, callout, staff, shiftSwapRequest, notification } from "@/db/schema";
 import { eq, and, or, gte, lte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { findCandidatesForShift } from "@/lib/coverage/find-candidates";
+import { insertNotification, composeLeaveDecided } from "@/lib/notifications/notify";
 
 export async function GET(
   _request: Request,
@@ -100,6 +101,25 @@ export async function PUT(
         createdAt: new Date().toISOString(),
       })
       .run();
+
+    // Phase 3 notification: tell the nurse their leave was approved/denied.
+    // Best-effort — a notify failure must never break the leave decision.
+    if (body.status === "approved" || body.status === "denied") {
+      try {
+        insertNotification(
+          db,
+          notification,
+          composeLeaveDecided({
+            staffId: existing.staffId,
+            outcome: body.status,
+            startDate: existing.startDate,
+            endDate: existing.endDate,
+          })
+        );
+      } catch (err) {
+        console.error("[notify] leave_decided failed", err);
+      }
+    }
 
     // If approved, create open shifts or callouts for affected assignments
     if (body.status === "approved") {

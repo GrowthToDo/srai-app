@@ -8,9 +8,14 @@ import {
   censusBand,
   exceptionLog,
   unit,
+  notification,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import {
+  insertNotification,
+  composeSchedulePublished,
+} from "@/lib/notifications/notify";
 
 export async function GET(
   _request: Request,
@@ -219,6 +224,46 @@ export async function PUT(
       newState: { status: updated.status },
       performedBy: "nurse_manager",
     }).run();
+
+    // Phase 3 notifications: on a draft→published transition, tell every staff
+    // member with a live assignment in this schedule. Best-effort — a notify
+    // failure must never break the publish.
+    if (
+      existing &&
+      existing.status !== "published" &&
+      updated.status === "published"
+    ) {
+      try {
+        const assignedStaff = db
+          .select({ staffId: assignment.staffId })
+          .from(assignment)
+          .where(
+            and(
+              eq(assignment.scheduleId, id),
+              ne(assignment.status, "cancelled"),
+              ne(assignment.status, "called_out")
+            )
+          )
+          .all();
+        const distinctStaffIds = [
+          ...new Set(assignedStaff.map((a) => a.staffId)),
+        ];
+        for (const sid of distinctStaffIds) {
+          insertNotification(
+            db,
+            notification,
+            composeSchedulePublished({
+              staffId: sid,
+              scheduleName: updated.name,
+              startDate: updated.startDate,
+              endDate: updated.endDate,
+            })
+          );
+        }
+      } catch (err) {
+        console.error("[notify] schedule_published failed", err);
+      }
+    }
   }
 
   return NextResponse.json(updated);

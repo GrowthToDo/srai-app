@@ -21,6 +21,10 @@ describe("authorize — nurse allow-list", () => {
     ["/api/schedules/sched-1", "GET"],
     ["/api/auth/me", "GET"],
     ["/api/auth/login", "POST"],
+    // Nurse self-service surface (/api/my/*): each handler scopes to self.
+    ["/api/my/swap-options", "GET"],
+    ["/api/my/notifications", "GET"],
+    ["/api/my/notifications", "PUT"],
   ];
 
   it.each(allow)("allows nurse %s %s", (path, method) => {
@@ -99,6 +103,10 @@ describe("authorize — manager allow-all", () => {
     ["/dashboard", "GET"],
     ["/", "GET"],
     ["/api/schedules/sched-1", "PUT"],
+    // Managers also reach the nurse self-service surface.
+    ["/api/my/swap-options", "GET"],
+    ["/api/my/notifications", "GET"],
+    ["/api/my/notifications", "PUT"],
   ];
 
   it.each(samples)("allows manager %s %s", (path, method) => {

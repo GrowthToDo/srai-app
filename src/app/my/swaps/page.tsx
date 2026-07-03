@@ -46,8 +46,30 @@ interface SwapRequest {
   targetShiftDate: string | null;
 }
 
+// Colleague + their upcoming shifts, from GET /api/my/swap-options.
+interface SwapOptionAssignment {
+  assignmentId: string;
+  date: string;
+  shiftType: string;
+  startTime: string;
+  endTime: string;
+}
+interface SwapOptionColleague {
+  staffId: string;
+  name: string;
+  role: string;
+  assignments: SwapOptionAssignment[];
+}
+
+// Sentinel value for the "Anyone" (open swap) choice in the "Swap with" select.
+const ANYONE = "__anyone__";
+
 function fullName(p: { firstName: string; lastName: string } | null): string {
   return p ? `${p.firstName} ${p.lastName}` : "A colleague";
+}
+
+function shiftTypeLabel(t: string): string {
+  return t === "night" ? "Night" : t === "day" ? "Day" : "Eve";
 }
 
 function fmtDate(d: string | null): string {
@@ -95,6 +117,13 @@ export default function SwapsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
 
+  // Directed-swap dialog state (step 2 + step 3).
+  const [colleagues, setColleagues] = useState<SwapOptionColleague[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  // "" until a shift is picked; then ANYONE (open) or a colleague's staffId.
+  const [swapWith, setSwapWith] = useState<string>(ANYONE);
+  const [chosenTargetAssignment, setChosenTargetAssignment] = useState("");
+
   const staffId = user?.staffId ?? null;
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
@@ -136,6 +165,39 @@ export default function SwapsPage() {
       fetchMyShifts();
     }
   }, [staffId, fetchSwaps, fetchMyShifts]);
+
+  // When the nurse picks one of their shifts, load same-role colleagues (and
+  // their upcoming shifts) so they can optionally direct the swap at a person.
+  useEffect(() => {
+    if (!chosenAssignment) {
+      setColleagues([]);
+      return;
+    }
+    let cancelled = false;
+    setOptionsLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/my/swap-options?assignmentId=${chosenAssignment}`
+        );
+        const data = await res.json();
+        if (!cancelled)
+          setColleagues(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancelled) setColleagues([]);
+      } finally {
+        if (!cancelled) setOptionsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chosenAssignment]);
+
+  const selectedColleague = useMemo(
+    () => colleagues.find((c) => c.staffId === swapWith) ?? null,
+    [colleagues, swapWith]
+  );
 
   const needsResponse = useMemo(
     () =>
@@ -187,16 +249,34 @@ export default function SwapsPage() {
     }
   }
 
-  async function submitOpenSwap() {
+  function resetDialog() {
+    setChosenAssignment("");
+    setNote("");
+    setSwapWith(ANYONE);
+    setChosenTargetAssignment("");
+    setColleagues([]);
+  }
+
+  const directed = swapWith !== ANYONE;
+  const canSubmit =
+    !!chosenAssignment &&
+    !submitting &&
+    (!directed || !!chosenTargetAssignment);
+
+  async function submitSwap() {
     if (!chosenAssignment || !staffId) return;
+    if (directed && !chosenTargetAssignment) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/swap-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // Open swap: no target. Server stamps requestingStaffId from session.
+          // Server stamps requestingStaffId from the session; the nurse cannot
+          // spoof the requesting side. Target fields are legitimate input.
           requestingAssignmentId: chosenAssignment,
+          targetStaffId: directed ? swapWith : null,
+          targetAssignmentId: directed ? chosenTargetAssignment : null,
           notes: note.trim() || null,
         }),
       });
@@ -211,12 +291,13 @@ export default function SwapsPage() {
       }
       addToast({
         title: "Swap requested",
-        description: "Your manager will find a match.",
+        description: directed
+          ? `${selectedColleague?.name ?? "Your colleague"} will be asked to accept.`
+          : "Your manager will find a match.",
         variant: "success",
       });
       setOpen(false);
-      setChosenAssignment("");
-      setNote("");
+      resetDialog();
       await fetchSwaps();
     } catch {
       addToast({
@@ -367,15 +448,22 @@ export default function SwapsPage() {
       )}
 
       {/* Ask for a swap dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) resetDialog();
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Ask for a swap</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Step 1 — pick MY shift */}
             <div className="space-y-1.5">
-              <Label htmlFor="swap-shift">Which shift?</Label>
+              <Label htmlFor="swap-shift">Which of your shifts?</Label>
               {myShifts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   You have no upcoming published shifts to swap.
@@ -383,7 +471,12 @@ export default function SwapsPage() {
               ) : (
                 <Select
                   value={chosenAssignment}
-                  onValueChange={setChosenAssignment}
+                  onValueChange={(v) => {
+                    setChosenAssignment(v);
+                    // A new shift means fresh options — reset step 2/3.
+                    setSwapWith(ANYONE);
+                    setChosenTargetAssignment("");
+                  }}
                 >
                   <SelectTrigger id="swap-shift" className="w-full">
                     <SelectValue placeholder="Pick one of your shifts" />
@@ -392,14 +485,77 @@ export default function SwapsPage() {
                     {myShifts.map((s) => (
                       <SelectItem key={s.assignmentId} value={s.assignmentId}>
                         {format(new Date(s.date + "T00:00:00"), "EEE, MMM d")} ·{" "}
-                        {s.shiftType === "night" ? "Night" : s.shiftType === "day" ? "Day" : "Eve"}{" "}
-                        {s.startTime}–{s.endTime}
+                        {shiftTypeLabel(s.shiftType)} {s.startTime}–{s.endTime}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
             </div>
+
+            {/* Step 2 — swap with anyone, or a specific colleague */}
+            {chosenAssignment && (
+              <div className="space-y-1.5">
+                <Label htmlFor="swap-with">Swap with</Label>
+                <Select
+                  value={swapWith}
+                  onValueChange={(v) => {
+                    setSwapWith(v);
+                    setChosenTargetAssignment("");
+                  }}
+                >
+                  <SelectTrigger id="swap-with" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ANYONE}>
+                      Anyone — let my manager find cover
+                    </SelectItem>
+                    {colleagues.map((c) => (
+                      <SelectItem key={c.staffId} value={c.staffId}>
+                        {c.name} ({c.role})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {optionsLoading && (
+                  <p className="text-xs text-muted-foreground">
+                    Loading colleagues…
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Step 3 — which of THEIR shifts you'd take (directed only) */}
+            {directed && selectedColleague && (
+              <div className="space-y-1.5">
+                <Label htmlFor="swap-their-shift">
+                  Which of their shifts would you take?
+                </Label>
+                {selectedColleague.assignments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {selectedColleague.name} has no upcoming shifts to trade.
+                  </p>
+                ) : (
+                  <Select
+                    value={chosenTargetAssignment}
+                    onValueChange={setChosenTargetAssignment}
+                  >
+                    <SelectTrigger id="swap-their-shift" className="w-full">
+                      <SelectValue placeholder="Pick one of their shifts" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedColleague.assignments.map((a) => (
+                        <SelectItem key={a.assignmentId} value={a.assignmentId}>
+                          {format(new Date(a.date + "T00:00:00"), "EEE, MMM d")} ·{" "}
+                          {shiftTypeLabel(a.shiftType)} {a.startTime}–{a.endTime}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label htmlFor="swap-note">Note (optional)</Label>
@@ -413,22 +569,24 @@ export default function SwapsPage() {
             </div>
 
             <p className="rounded-md bg-accent/60 p-2 text-xs text-muted-foreground">
-              Your manager will find a match or a colleague can take it.
+              {directed && selectedColleague
+                ? `${selectedColleague.name.split(" ")[0]} will be asked to accept, then your manager gives final approval.`
+                : "Your manager will find a match or a colleague can take it."}
             </p>
           </div>
 
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                resetDialog();
+              }}
               disabled={submitting}
             >
               Cancel
             </Button>
-            <Button
-              onClick={submitOpenSwap}
-              disabled={!chosenAssignment || submitting}
-            >
+            <Button onClick={submitSwap} disabled={!canSubmit}>
               {submitting ? "Sending…" : "Request swap"}
             </Button>
           </DialogFooter>

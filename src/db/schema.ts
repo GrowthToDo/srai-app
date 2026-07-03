@@ -957,3 +957,43 @@ export const user = sqliteTable(
   },
   (table) => [uniqueIndex("user_email_idx").on(table.email)]
 );
+
+// ============================================================
+// NOTIFICATION (Phase 3 — in-app only; email/SMS deferred)
+// ============================================================
+// One row per in-app notification delivered to a staff member. Notifications
+// are best-effort side effects of the main mutations (schedule publish, swap
+// lifecycle, leave decision) — a failure to notify must never break the
+// mutation. `readAt` is null until the nurse opens the notifications page,
+// which marks all of their unread notifications read.
+export const notification = sqliteTable(
+  "notification",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    type: text("type", {
+      enum: [
+        "schedule_published",
+        "swap_requested",
+        "swap_response",
+        "swap_decided",
+        "leave_decided",
+      ],
+    }).notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    href: text("href"),
+    readAt: text("read_at"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("notification_staff_read_idx").on(table.staffId, table.readAt),
+    index("notification_created_idx").on(table.createdAt),
+  ]
+);

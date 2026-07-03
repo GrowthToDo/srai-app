@@ -1,7 +1,8 @@
 import { db } from "@/db";
-import { shiftSwapRequest, staff, assignment, shift, exceptionLog } from "@/db/schema";
+import { shiftSwapRequest, staff, assignment, shift, exceptionLog, notification } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { insertNotification, composeSwapRequested } from "@/lib/notifications/notify";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -139,6 +140,25 @@ export async function POST(request: Request) {
     },
     performedBy: "nurse_manager",
   }).run();
+
+  // Phase 3 notification: a DIRECTED swap (targetStaffId set) asks a specific
+  // colleague to accept. Notify the target. Best-effort — never break the POST.
+  if (newRequest.targetStaffId) {
+    try {
+      insertNotification(
+        db,
+        notification,
+        composeSwapRequested({
+          targetStaffId: newRequest.targetStaffId,
+          requesterName: reqName,
+          requesterShiftDate: reqShift?.date ?? null,
+          targetShiftDate: tgtShift?.date ?? null,
+        })
+      );
+    } catch (err) {
+      console.error("[notify] swap_requested failed", err);
+    }
+  }
 
   return NextResponse.json(newRequest, { status: 201 });
 }
