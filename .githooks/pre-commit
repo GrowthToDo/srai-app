@@ -1,0 +1,15 @@
+#!/bin/sh
+# Blocking verify gate — see docs/superpowers/specs/2026-07-03-post-fable-operating-system-design.md
+# Docs-only escape hatch: VERIFY_SKIP_TESTS=1 git commit …  (tests skipped, tsc+prettier still enforced)
+if [ "$VERIFY_SKIP_TESTS" = "1" ]; then
+  node scripts/verify.mjs --skip-tests
+else
+  node scripts/verify.mjs
+fi
+status=$?
+if [ $status -ne 0 ]; then
+  echo ""
+  echo "Commit blocked by the verify gate (see failure above)."
+  echo "Docs-only commit? Re-run as: VERIFY_SKIP_TESTS=1 git commit …"
+  exit $status
+fi
