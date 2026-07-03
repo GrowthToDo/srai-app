@@ -25,6 +25,12 @@ export interface SessionUser {
   role: "manager" | "nurse";
   staffId: string | null;
   name: string;
+  /**
+   * The linked staff row's employmentType (e.g. "per_diem", "full_time"), or
+   * null for managers. Drives per_diem-only nurse UI such as the Availability
+   * tab.
+   */
+  employmentType: string | null;
 }
 
 interface SessionContextValue {

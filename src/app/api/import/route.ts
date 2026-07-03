@@ -4,12 +4,8 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { parseExcelFile, generateTemplate, type ImportResult } from "@/lib/import/parse-excel";
 import { provisionAuthUsers } from "@/lib/auth/provision-users";
+import { PRN_TEMPLATE_SCHEDULE_ID } from "@/lib/prn-availability";
 import * as XLSX from "xlsx";
-
-// Fixed schedule ID used as FK anchor for PRN availability imported from Excel.
-// The rule engine loads PRN availability across ALL schedules (no scheduleId filter),
-// so this ID is only needed to satisfy the FK constraint — it has no scheduling impact.
-const PRN_TEMPLATE_SCHEDULE_ID = "00000000-0000-0000-0000-000000000001";
 
 const DAY_NAME_TO_INDEX: Record<string, number> = {
   Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,

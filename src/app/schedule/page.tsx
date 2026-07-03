@@ -74,11 +74,16 @@ export default function SchedulePage() {
     setName("");
     setStartDate("");
     setEndDate("");
-    // Default to unit from most recent non-archived schedule; fall back to first unit
+    // Default to unit from most recent non-archived schedule; with no schedules
+    // yet, prefer the unit with the most active staff (alphabetical order made
+    // ER — 0 staff — the default on a fresh import, guaranteeing a dead end).
     const lastUnit = schedules
       .filter((s) => s.status !== "archived")
       .sort((a, b) => b.startDate.localeCompare(a.startDate))[0]?.unit;
-    setSelectedUnit(lastUnit ?? units[0]?.name ?? "");
+    const busiestUnit = units
+      .slice()
+      .sort((a, b) => b.staffCount - a.staffCount)[0]?.name;
+    setSelectedUnit(lastUnit ?? busiestUnit ?? units[0]?.name ?? "");
     setError(null);
     setDialogOpen(true);
   }

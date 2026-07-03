@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, LogOut, Plane, Repeat } from "lucide-react";
+import { CalendarCheck, CalendarDays, LogOut, Plane, Repeat } from "lucide-react";
 import { useSession } from "@/lib/auth/use-session";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/nurse/notification-bell";
@@ -18,11 +18,19 @@ import { NotificationBell } from "@/components/nurse/notification-bell";
  * chrome for the nurse surface.
  */
 
-const TABS = [
+const BASE_TABS = [
   { href: "/my", label: "My Schedule", icon: CalendarDays },
   { href: "/my/leave", label: "Leave", icon: Plane },
   { href: "/my/swaps", label: "Swaps", icon: Repeat },
 ] as const;
+
+// Only per_diem (PRN) nurses submit availability, so the 4th tab is theirs
+// alone. Full-time nurses like James see the 3 base tabs unchanged.
+const AVAILABILITY_TAB = {
+  href: "/my/availability",
+  label: "Availability",
+  icon: CalendarCheck,
+} as const;
 
 export default function NurseLayout({
   children,
@@ -31,6 +39,11 @@ export default function NurseLayout({
 }) {
   const pathname = usePathname();
   const { user, loading, logout } = useSession();
+
+  const tabs =
+    user?.employmentType === "per_diem"
+      ? [...BASE_TABS, AVAILABILITY_TAB]
+      : BASE_TABS;
 
   const firstName =
     !loading && user?.name ? user.name.split(" ")[0] : loading ? "" : "";
@@ -77,7 +90,7 @@ export default function NurseLayout({
 
       {/* Bottom tab bar */}
       <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex w-full max-w-md items-stretch border-t border-border bg-background/95 backdrop-blur">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = isActive(tab.href);
           const Icon = tab.icon;
           return (

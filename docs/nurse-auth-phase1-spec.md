@@ -95,12 +95,20 @@ At middleware module load: production + `AUTH_ENABLED=true` + no `AUTH_SECRET`
 
 - **Manager** — `SEED_MANAGER_EMAIL` / `SEED_MANAGER_PASSWORD`
   (default `admin@cah.local` / `changeme-dev`), `staffId = null`.
-- **Demo nurse** — `james.wilson@cah.local` / `demo1234`, linked to James
-  Wilson's staff row.
+- **Demo nurse (full-time)** — `james.wilson@cah.local` / `demo1234`, linked to
+  James Wilson's staff row. Pre-filled on `/login` when `DEMO_PREFILL=true`.
+- **Demo nurse (per diem)** — `olivia.bennett@cah.local` / `demo1234`, linked to
+  Olivia Bennett's staff row. She is a `per_diem` nurse, so her portal shows the
+  4th **Availability** tab and the `/my/availability` page (James, being
+  full-time, does not). She is **never** pre-filled on the login form — sign in
+  manually to exercise the PRN self-service flow.
 
-`npm run db:seed:users` (`src/db/create-users.ts`) provisions **only** those two
-accounts, non-destructively (`onConflictDoNothing` on email) — safe to run
-repeatedly on a live DB.
+Both demo nurses share the password `demo1234` until rotation.
+
+`npm run db:seed:users` (`src/db/create-users.ts`) provisions **only** these
+accounts (the manager plus both demo nurses), non-destructively
+(`onConflictDoNothing` on email) — safe to run repeatedly on a live DB. Each
+demo nurse is skipped with a log line if no matching staff row exists yet.
 
 ## Rollout (Railway)
 

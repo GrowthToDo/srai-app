@@ -60,14 +60,22 @@ export async function GET(request: Request) {
   }
 
   let name = "Manager";
+  // employmentType is null for managers (no staff row) and drives nurse-only UI
+  // such as the "Availability" tab, which is per_diem-only.
+  let employmentType: string | null = null;
   if (account.role === "nurse" && account.staffId) {
     const staffRecord = db
-      .select({ firstName: staff.firstName, lastName: staff.lastName })
+      .select({
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+        employmentType: staff.employmentType,
+      })
       .from(staff)
       .where(eq(staff.id, account.staffId))
       .get();
     if (staffRecord) {
       name = `${staffRecord.firstName} ${staffRecord.lastName}`;
+      employmentType = staffRecord.employmentType;
     }
   }
 
@@ -77,5 +85,6 @@ export async function GET(request: Request) {
     role: account.role,
     staffId: account.staffId ?? null,
     name,
+    employmentType,
   });
 }

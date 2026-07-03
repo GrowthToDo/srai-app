@@ -31,16 +31,18 @@ async function main() {
       ? `✓ Created manager user ${managerEmail}`
       : `• Manager user ${managerEmail} already exists — skipped`
   );
-  if (result.nurseSkippedNoStaff) {
-    console.log(
-      "• James Wilson not found in staff — demo nurse user not created. Run db:seed first."
-    );
-  } else {
-    console.log(
-      result.nurseCreated
-        ? "✓ Created demo nurse user james.wilson@cah.local"
-        : "• Demo nurse user james.wilson@cah.local already exists — skipped"
-    );
+  for (const nurse of result.nurses) {
+    if (nurse.skippedNoStaff) {
+      console.log(
+        `• Matching staff for ${nurse.email} not found — demo nurse user not created. Run db:seed first.`
+      );
+    } else {
+      console.log(
+        nurse.created
+          ? `✓ Created demo nurse user ${nurse.email}`
+          : `• Demo nurse user ${nurse.email} already exists — skipped`
+      );
+    }
   }
 
   process.exit(0);
