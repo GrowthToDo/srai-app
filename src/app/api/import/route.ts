@@ -3,6 +3,7 @@ import * as schema from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { parseExcelFile, generateTemplate, type ImportResult } from "@/lib/import/parse-excel";
+import { provisionAuthUsers } from "@/lib/auth/provision-users";
 import * as XLSX from "xlsx";
 
 // Fixed schedule ID used as FK anchor for PRN availability imported from Excel.
@@ -380,6 +381,15 @@ export async function POST(request: Request) {
       deleteAllData();
       importData(result);
     });
+
+    // Re-provision auth accounts: wiping staff cascade-deletes any nurse login
+    // bound to a staff row, so the demo nurse must be recreated against the
+    // fresh roster. Never allowed to fail the import itself.
+    try {
+      provisionAuthUsers(db);
+    } catch (err) {
+      console.error("post-import user provisioning failed:", err);
+    }
 
     // Return success
     return NextResponse.json({
