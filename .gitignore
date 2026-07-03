@@ -47,3 +47,5 @@ next-env.d.ts
 
 # Claude Code internal files
 .claude/
+
+scripts/.verify-state.json

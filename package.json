@@ -16,7 +16,8 @@
     "db:seed": "npx tsx src/db/seed.ts",
     "db:seed:users": "npx tsx src/db/create-users.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
