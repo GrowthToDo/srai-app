@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from "date-fns";
 import { AlertTriangle, CalendarClock, ChevronRight } from "lucide-react";
 import { useSession } from "@/lib/auth/use-session";
@@ -58,6 +59,21 @@ export default function MySchedulePage() {
   const [days, setDays] = useState<NurseDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<NurseShift | null>(null);
+  // PRN nurses with no availability on file get a "submit your days" hero
+  // instead of "enjoy the breather" — an empty PRN schedule usually means the
+  // manager has nothing to schedule them FROM, not that they're off the hook.
+  const [hasAvailability, setHasAvailability] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (user?.employmentType !== "per_diem" || !user.staffId) return;
+    fetch("/api/prn-availability")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { staffId: string; availableDates: string[] }[]) => {
+        const own = rows.find((r) => r.staffId === user.staffId);
+        setHasAvailability(!!own && own.availableDates.length > 0);
+      })
+      .catch(() => setHasAvailability(null));
+  }, [user?.employmentType, user?.staffId]);
   const [reason, setReason] = useState<string>("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -189,10 +205,32 @@ export default function MySchedulePage() {
                 <CalendarClock className="size-3.5" />
                 <span>Next shift</span>
               </div>
-              <p className="text-sm opacity-90">
-                No upcoming shifts on your published schedule right now. Enjoy
-                the breather.
-              </p>
+              {user.employmentType === "per_diem" && hasAvailability === false ? (
+                <div className="space-y-2">
+                  <p className="text-sm opacity-90">
+                    You haven&apos;t shared your availability yet — your manager
+                    can only schedule you on days you mark as available.
+                  </p>
+                  <Button
+                    asChild
+                    variant="secondary"
+                    size="sm"
+                    className="!bg-white !text-primary hover:!bg-white/90"
+                  >
+                    <Link href="/my/availability">Submit my availability →</Link>
+                  </Button>
+                </div>
+              ) : user.employmentType === "per_diem" ? (
+                <p className="text-sm opacity-90">
+                  No shifts assigned yet. Your manager schedules you from the
+                  days you marked available.
+                </p>
+              ) : (
+                <p className="text-sm opacity-90">
+                  No upcoming shifts on your published schedule right now. Enjoy
+                  the breather.
+                </p>
+              )}
             </div>
           )}
         </CardContent>
