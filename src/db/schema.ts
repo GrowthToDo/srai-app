@@ -927,3 +927,33 @@ export const openShift = sqliteTable(
     index("open_shift_priority_idx").on(table.priority),
   ]
 );
+
+// ============================================================
+// USER (Phase 1 auth)
+// ============================================================
+// Login accounts, separate from the `staff` HR record. A manager account has
+// staffId null; a nurse account links to their staff row (onDelete cascade so a
+// removed staff member loses their login). passwordHash is a self-describing
+// "saltHex:derivedKeyHex" scrypt string produced by src/lib/auth/password.ts.
+export const user = sqliteTable(
+  "user",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    email: text("email").notNull(),
+    role: text("role", { enum: ["manager", "nurse"] }).notNull(),
+    staffId: text("staff_id").references(() => staff.id, {
+      onDelete: "cascade",
+    }),
+    passwordHash: text("password_hash").notNull(),
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [uniqueIndex("user_email_idx").on(table.email)]
+);

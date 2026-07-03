@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 import path from "path";
 import { addDays, format, subDays } from "date-fns";
+import { hashPassword } from "../lib/auth/password";
 
 // Same DATABASE_PATH override as src/db/index.ts so seeding targets the
 // volume-mounted DB on hosted deploys.
@@ -41,6 +42,7 @@ async function seed() {
     DELETE FROM census_band;
     DELETE FROM shift_definition;
     DELETE FROM staff_preferences;
+    DELETE FROM user;
     DELETE FROM staff;
     DELETE FROM public_holiday;
     DELETE FROM unit;
@@ -221,6 +223,36 @@ async function seed() {
     }).run();
   }
   console.log(`✓ Created ${staffData.length} staff members`);
+
+  // ============================================================
+  // USERS (Phase 1 auth): one manager + one demo nurse
+  // ============================================================
+  // Manager account — no linked staff record. Credentials come from env so a
+  // real deploy can set its own; dev falls back to admin@cah.local / changeme-dev.
+  db.insert(schema.user).values({
+    id: uuid(),
+    email: process.env.SEED_MANAGER_EMAIL ?? "admin@cah.local",
+    role: "manager",
+    staffId: null,
+    passwordHash: hashPassword(process.env.SEED_MANAGER_PASSWORD ?? "changeme-dev"),
+  }).run();
+
+  // Demo nurse — linked to James Wilson's staff row (found by name).
+  const jamesWilson = staffData.find(
+    (s) => s.firstName === "James" && s.lastName === "Wilson"
+  );
+  if (jamesWilson) {
+    db.insert(schema.user).values({
+      id: uuid(),
+      email: "james.wilson@cah.local",
+      role: "nurse",
+      staffId: jamesWilson.id,
+      passwordHash: hashPassword("demo1234"),
+    }).run();
+    console.log("✓ Created 2 users (manager + demo nurse James Wilson)");
+  } else {
+    console.log("✓ Created 1 user (manager); James Wilson not found for demo nurse");
+  }
 
   // Create staff preferences
   const shiftPrefs = ["day", "night", "evening", "any"] as const;

@@ -65,10 +65,19 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const body = await request.json();
 
+  // Phase 1 ownership: a nurse may only file leave for themselves — force the
+  // staffId to their own identity. Managers (or AUTH_ENABLED off) use the body.
+  const role = request.headers.get("x-user-role");
+  const callerStaffId = request.headers.get("x-staff-id");
+  const staffId =
+    role === "nurse" && callerStaffId ? callerStaffId : body.staffId;
+  // PHASE 2 TODO: nurse-facing list filtering (a nurse should only GET their own
+  // leave). The GET handler above still returns all rows for the manager view.
+
   const newLeave = db
     .insert(staffLeave)
     .values({
-      staffId: body.staffId,
+      staffId,
       leaveType: body.leaveType,
       startDate: body.startDate,
       endDate: body.endDate,
@@ -80,10 +89,10 @@ export async function POST(request: Request) {
     .get();
 
   const staffRecord = db.select({ firstName: staff.firstName, lastName: staff.lastName })
-    .from(staff).where(eq(staff.id, body.staffId)).get();
+    .from(staff).where(eq(staff.id, staffId)).get();
   const staffName = staffRecord
     ? `${staffRecord.firstName} ${staffRecord.lastName}`
-    : body.staffId;
+    : staffId;
 
   const reasonSuffix = body.reason ? ` — Reason: ${body.reason}` : "";
   logAuditEvent({

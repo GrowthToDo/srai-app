@@ -72,11 +72,21 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const body = await request.json();
 
+  // Phase 1 ownership: a nurse may only request a swap AS themselves — force the
+  // requestingStaffId to their own identity. Managers (or AUTH_ENABLED off) use
+  // the body value.
+  // PHASE 2 TODO: swap-accept split — a nurse accepting someone else's open swap
+  // is a distinct action needing its own ownership check; not modeled in Phase 1.
+  const role = request.headers.get("x-user-role");
+  const callerStaffId = request.headers.get("x-staff-id");
+  const requestingStaffId =
+    role === "nurse" && callerStaffId ? callerStaffId : body.requestingStaffId;
+
   const newRequest = db
     .insert(shiftSwapRequest)
     .values({
       requestingAssignmentId: body.requestingAssignmentId,
-      requestingStaffId: body.requestingStaffId,
+      requestingStaffId,
       targetAssignmentId: body.targetAssignmentId || null,
       targetStaffId: body.targetStaffId || null,
       status: "pending",
@@ -87,7 +97,7 @@ export async function POST(request: Request) {
 
   // Audit log: swap requested
   const reqStaff = db.select({ firstName: staff.firstName, lastName: staff.lastName })
-    .from(staff).where(eq(staff.id, body.requestingStaffId)).get();
+    .from(staff).where(eq(staff.id, requestingStaffId)).get();
   const reqAssn = db.select({ shiftId: assignment.shiftId })
     .from(assignment).where(eq(assignment.id, body.requestingAssignmentId)).get();
   const reqShift = reqAssn
@@ -105,7 +115,7 @@ export async function POST(request: Request) {
     ? db.select({ date: shift.date }).from(shift).where(eq(shift.id, tgtAssn.shiftId)).get()
     : null;
 
-  const reqName = reqStaff ? `${reqStaff.firstName} ${reqStaff.lastName}` : body.requestingStaffId;
+  const reqName = reqStaff ? `${reqStaff.firstName} ${reqStaff.lastName}` : requestingStaffId;
   const tgtName = tgtStaff ? `${tgtStaff.firstName} ${tgtStaff.lastName}` : null;
   db.insert(exceptionLog).values({
     entityType: "swap_request",

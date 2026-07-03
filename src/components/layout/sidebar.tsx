@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
+import { useSession } from "@/lib/auth/use-session";
 
 interface NotificationCounts {
   pendingLeaveCount: number;
@@ -123,6 +124,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { guide } = useOnboarding();
+  const { user, logout } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [counts, setCounts] = useState<NotificationCounts | null>(null);
@@ -238,6 +240,30 @@ export function Sidebar() {
         ))}
       </nav>
       <div className="border-t p-4">
+        {user && (
+          <button
+            type="button"
+            onClick={() => logout()}
+            className="mb-3 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" x2="9" y1="12" y2="12" />
+            </svg>
+            <span>Log out</span>
+          </button>
+        )}
         <div className="mb-2 flex items-center justify-between">
           <div>
             <p className="text-xs text-muted-foreground">ICU - CAH Texas</p>

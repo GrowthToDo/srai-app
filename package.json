@@ -14,6 +14,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "npx tsx src/db/seed.ts",
+    "db:seed:users": "npx tsx src/db/create-users.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

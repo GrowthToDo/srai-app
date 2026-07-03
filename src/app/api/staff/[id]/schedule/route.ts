@@ -8,6 +8,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: staffId } = await params;
+
+  // Phase 1 ownership: a nurse may only read their OWN schedule. Identity comes
+  // from the middleware headers; when absent (AUTH_ENABLED off) behavior is
+  // unchanged from before.
+  const role = request.headers.get("x-user-role");
+  const callerStaffId = request.headers.get("x-staff-id");
+  if (role === "nurse" && staffId !== callerStaffId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { searchParams } = new URL(request.url);
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
