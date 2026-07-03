@@ -3,7 +3,11 @@ import { user, staff } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { verifySession } from "@/lib/auth/session";
+import {
+  verifySession,
+  SESSION_COOKIE_NAME,
+  sessionCookieAttributes,
+} from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
@@ -43,7 +47,16 @@ export async function GET(request: Request) {
 
   const account = db.select().from(user).where(eq(user.id, identity.uid)).get();
   if (!account || !account.isActive) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    // Valid signature but the account is gone or deactivated (e.g. a re-import
+    // cascade-deleted a nurse login). The stateless middleware would keep
+    // honoring this cookie for up to 30 days — destroy it so the client falls
+    // cleanly back to the login flow instead of a half-authenticated limbo.
+    const res = NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    res.headers.set(
+      "Set-Cookie",
+      `${SESSION_COOKIE_NAME}=; ${sessionCookieAttributes(0)}`
+    );
+    return res;
   }
 
   let name = "Manager";
