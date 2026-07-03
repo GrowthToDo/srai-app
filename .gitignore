@@ -46,6 +46,8 @@ yarn-error.log*
 next-env.d.ts
 
 # Claude Code internal files
-.claude/
+.claude/*
+!.claude/agents/
+!.claude/agents/**
 
 scripts/.verify-state.json
