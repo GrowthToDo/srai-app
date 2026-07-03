@@ -235,7 +235,95 @@ export async function PUT(
   }
 
   // -------------------------------------------------------------------------
-  // APPROVE path
+  // PHASE 2: NURSE branch — a targeted nurse accepts or declines a swap aimed
+  // at them. This is the ONLY PUT a nurse may make (roles.ts allows the route;
+  // this handler enforces the rest). Compliance validation stays manager-side:
+  // an "accept" keeps the swap PENDING and records the acceptance in
+  // validationNotes so the manager still gives final approval; a "decline"
+  // denies it outright. No schema changes.
+  // -------------------------------------------------------------------------
+  const role = request.headers.get("x-user-role");
+  if (role === "nurse") {
+    const callerStaffId = request.headers.get("x-staff-id");
+    const action = body.action;
+
+    // Guard the whole nurse contract: must be the swap's target, the swap must
+    // still be pending, and the action must be accept|decline. Anything else
+    // (wrong nurse, already-resolved swap, or a manager-style status body) → 403.
+    if (
+      !callerStaffId ||
+      existing.targetStaffId !== callerStaffId ||
+      existing.status !== "pending" ||
+      (action !== "accept" && action !== "decline")
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const targetStaffRow = db
+      .select({ firstName: staff.firstName, lastName: staff.lastName })
+      .from(staff)
+      .where(eq(staff.id, callerStaffId))
+      .get();
+    const targetName = targetStaffRow
+      ? `${targetStaffRow.firstName} ${targetStaffRow.lastName}`
+      : callerStaffId;
+    const nowIso = new Date().toISOString();
+    const today = nowIso.slice(0, 10);
+
+    if (action === "decline") {
+      const declined = db
+        .update(shiftSwapRequest)
+        .set({
+          status: "denied",
+          denialReason: `Declined by ${targetName}`,
+          reviewedAt: nowIso,
+        })
+        .where(eq(shiftSwapRequest.id, id))
+        .returning()
+        .get();
+
+      db.insert(exceptionLog)
+        .values({
+          entityType: "swap_request",
+          entityId: id,
+          action: "swap_denied",
+          description: `Swap declined by target nurse ${targetName}`,
+          previousState: { status: existing.status },
+          newState: { status: "denied", denialReason: `Declined by ${targetName}` },
+          performedBy: targetName,
+        })
+        .run();
+
+      return NextResponse.json(declined);
+    }
+
+    // action === "accept": keep the swap PENDING for manager final approval,
+    // but stamp the acceptance so the manager sees the target agreed.
+    const acceptanceNote = `Accepted by target nurse ${targetName} on ${today}`;
+    const accepted = db
+      .update(shiftSwapRequest)
+      .set({ validationNotes: acceptanceNote })
+      .where(eq(shiftSwapRequest.id, id))
+      .returning()
+      .get();
+
+    db.insert(exceptionLog)
+      .values({
+        entityType: "swap_request",
+        entityId: id,
+        action: "updated",
+        description: `Swap accepted by target nurse ${targetName} — awaiting manager final approval`,
+        previousState: { status: existing.status, validationNotes: existing.validationNotes },
+        newState: { status: "pending", validationNotes: acceptanceNote },
+        performedBy: targetName,
+      })
+      .run();
+
+    return NextResponse.json(accepted);
+  }
+
+  // -------------------------------------------------------------------------
+  // APPROVE path (manager)
   // -------------------------------------------------------------------------
   if (body.status === "approved" && existing.status !== "approved") {
     const requestingAssignment = db

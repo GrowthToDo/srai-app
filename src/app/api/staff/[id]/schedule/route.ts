@@ -35,6 +35,18 @@ export async function GET(
     return NextResponse.json({ error: "Staff not found" }, { status: 404 });
   }
 
+  // PHASE 2: a nurse only sees assignments belonging to PUBLISHED schedules —
+  // draft/archived schedules are manager-only. Managers (or AUTH_ENABLED off)
+  // keep the current behavior (all statuses).
+  const assignmentConditions = [
+    eq(assignment.staffId, staffId),
+    gte(shift.date, startDate),
+    lte(shift.date, endDate),
+  ];
+  if (role === "nurse") {
+    assignmentConditions.push(eq(schedule.status, "published"));
+  }
+
   // Get all assignments for this staff in the date range
   const assignments = db
     .select({
@@ -59,13 +71,7 @@ export async function GET(
     .innerJoin(shift, eq(assignment.shiftId, shift.id))
     .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
     .innerJoin(schedule, eq(assignment.scheduleId, schedule.id))
-    .where(
-      and(
-        eq(assignment.staffId, staffId),
-        gte(shift.date, startDate),
-        lte(shift.date, endDate)
-      )
-    )
+    .where(and(...assignmentConditions))
     .all();
 
   // Get all approved leaves for this staff in the date range

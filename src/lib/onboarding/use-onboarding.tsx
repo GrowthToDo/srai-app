@@ -120,7 +120,21 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   }));
   const lastFetchRef = useRef(0);
 
+  // The nurse portal (/my*) is a separate, non-manager surface. Its endpoints
+  // (/api/notifications, /api/practice-examples) are manager-only — a nurse
+  // session 403s them at the middleware. Gate all onboarding fetching to
+  // non-/my paths so the provider never spams manager endpoints (on mount,
+  // route change, or tab-refocus) while a nurse is using their portal. The ref
+  // keeps refresh() dependency-free while still seeing the live path; it is
+  // written in an effect (never during render).
+  const isNursePortalRef = useRef(false);
+  useEffect(() => {
+    isNursePortalRef.current =
+      pathname === "/my" || pathname.startsWith("/my/");
+  }, [pathname]);
+
   const refresh = useCallback(() => {
+    if (isNursePortalRef.current) return;
     lastFetchRef.current = Date.now();
     fetch("/api/notifications")
       .then((r) => r.json())

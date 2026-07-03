@@ -62,6 +62,16 @@ const NURSE_RULES: Rule[] = [
     decision: "allow",
   },
 
+  // Swap requests: a nurse may PUT a single swap to accept/decline one that
+  // targets them. PUT /api/swap-requests/[id]. The route is reachable here; the
+  // handler enforces the rest (nurse must be the swap's target, status pending,
+  // action accept|decline) and 403s any other nurse PUT.
+  {
+    pattern: new RegExp(`^/api/swap-requests/${SEG}$`),
+    methods: ["PUT"],
+    decision: "allow",
+  },
+
   // PRN availability: view + submit.  GET+POST /api/prn-availability (collection)
   {
     pattern: new RegExp(`^/api/prn-availability$`),

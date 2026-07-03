@@ -1,12 +1,20 @@
 import { db } from "@/db";
 import { shiftSwapRequest, staff, assignment, shift, exceptionLog } from "@/db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const staffId = searchParams.get("staffId");
+  const queryStaffId = searchParams.get("staffId");
   const status = searchParams.get("status");
+
+  // PHASE 2 scoping: a nurse only sees swaps they are a party to (requester or
+  // target). Force the staffId filter to their identity regardless of query
+  // param. Managers (or AUTH_ENABLED off) keep the query-param behavior.
+  const role = request.headers.get("x-user-role");
+  const callerStaffId = request.headers.get("x-staff-id");
+  const staffId =
+    role === "nurse" && callerStaffId ? callerStaffId : queryStaffId;
 
   // Get all requests
   const allRequests = db.select().from(shiftSwapRequest).all();
@@ -75,8 +83,8 @@ export async function POST(request: Request) {
   // Phase 1 ownership: a nurse may only request a swap AS themselves — force the
   // requestingStaffId to their own identity. Managers (or AUTH_ENABLED off) use
   // the body value.
-  // PHASE 2 TODO: swap-accept split — a nurse accepting someone else's open swap
-  // is a distinct action needing its own ownership check; not modeled in Phase 1.
+  // PHASE 2 (done): the swap-accept split (a targeted nurse accepting/declining)
+  // lives in the PUT /api/swap-requests/[id] nurse branch.
   const role = request.headers.get("x-user-role");
   const callerStaffId = request.headers.get("x-staff-id");
   const requestingStaffId =

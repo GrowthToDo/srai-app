@@ -11,10 +11,18 @@ export async function GET(request: Request) {
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
 
+  // PHASE 2 scoping: a nurse only ever sees THEIR OWN leave. Force the staffId
+  // filter to their identity regardless of any query param. Managers (or
+  // AUTH_ENABLED off) keep the query-param behavior below.
+  const role = request.headers.get("x-user-role");
+  const callerStaffId = request.headers.get("x-staff-id");
+  const effectiveStaffId =
+    role === "nurse" && callerStaffId ? callerStaffId : staffId;
+
   const conditions = [];
 
-  if (staffId) {
-    conditions.push(eq(staffLeave.staffId, staffId));
+  if (effectiveStaffId) {
+    conditions.push(eq(staffLeave.staffId, effectiveStaffId));
   }
   if (status) {
     conditions.push(
@@ -71,8 +79,8 @@ export async function POST(request: Request) {
   const callerStaffId = request.headers.get("x-staff-id");
   const staffId =
     role === "nurse" && callerStaffId ? callerStaffId : body.staffId;
-  // PHASE 2 TODO: nurse-facing list filtering (a nurse should only GET their own
-  // leave). The GET handler above still returns all rows for the manager view.
+  // PHASE 2 (done): nurse-facing list filtering — the GET handler above scopes a
+  // nurse to their own leave rows via the x-staff-id header.
 
   const newLeave = db
     .insert(staffLeave)

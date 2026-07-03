@@ -12,6 +12,9 @@ describe("authorize — nurse allow-list", () => {
     ["/api/callouts", "POST"],
     ["/api/swap-requests", "GET"],
     ["/api/swap-requests", "POST"],
+    // A nurse may PUT a single swap (accept/decline one targeting them); the
+    // handler enforces target-ownership + pending + action.
+    ["/api/swap-requests/sr-1", "PUT"],
     ["/api/prn-availability", "GET"],
     ["/api/prn-availability", "POST"],
     ["/api/schedules", "GET"],
@@ -57,7 +60,9 @@ describe("authorize — nurse denies", () => {
     ["/api/staff-leave", "PUT"],
     ["/api/callouts", "GET"],
     ["/api/callouts/co-1", "PUT"],
-    ["/api/swap-requests/sr-1", "PUT"],
+    // A nurse may PUT the single swap (accept/decline) but not other methods on it.
+    ["/api/swap-requests/sr-1", "GET"],
+    ["/api/swap-requests/sr-1", "DELETE"],
     ["/api/swap-requests/sr-1/validate", "POST"],
     ["/api/prn-availability/prn-1", "PUT"],
     ["/api/staff-leave/leave-1", "PUT"],

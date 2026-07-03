@@ -1,0 +1,9 @@
+{
+  "name": "SimpleScheduleAI",
+  "short_name": "SSAI",
+  "start_url": "/my",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#2D5A4A",
+  "icons": []
+}
