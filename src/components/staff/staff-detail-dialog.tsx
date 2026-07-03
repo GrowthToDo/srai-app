@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { format } from "date-fns";
+import { CalendarPlus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +10,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { RecordAvailabilityDialog } from "@/components/prn-availability/record-availability-dialog";
+import { toIsoDate } from "@/lib/prn-availability";
 import { StaffCalendar } from "./staff-calendar";
 
 interface Staff {
@@ -29,6 +34,12 @@ interface StaffPreferences {
   maxConsecutiveDays: number;
   preferredDaysOff: string[];
   avoidWeekends: boolean;
+  notes: string | null;
+}
+
+interface StaffAvailability {
+  staffId: string;
+  availableDates: string[];
   notes: string | null;
 }
 
@@ -61,6 +72,32 @@ export function StaffDetailDialog({
   const [preferences, setPreferences] = useState<StaffPreferences | null>(null);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
 
+  // PRN availability summary (per_diem staff only).
+  const [availability, setAvailability] = useState<StaffAvailability | null>(
+    null
+  );
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
+
+  const staffId = staff?.id ?? null;
+  const isPerDiem = staff?.employmentType === "per_diem";
+
+  const fetchAvailability = useCallback(async () => {
+    if (!staffId) return;
+    setLoadingAvailability(true);
+    try {
+      const res = await fetch("/api/prn-availability");
+      const data: StaffAvailability[] = await res.json();
+      const mine = Array.isArray(data)
+        ? (data.find((a) => a.staffId === staffId) ?? null)
+        : null;
+      setAvailability(mine);
+    } catch {
+      setAvailability(null);
+    }
+    setLoadingAvailability(false);
+  }, [staffId]);
+
   useEffect(() => {
     if (open && staff) {
       setLoadingPrefs(true);
@@ -77,7 +114,20 @@ export function StaffDetailDialog({
     }
   }, [open, staff]);
 
+  useEffect(() => {
+    if (open && isPerDiem) {
+      fetchAvailability();
+    } else {
+      setAvailability(null);
+    }
+  }, [open, isPerDiem, fetchAvailability]);
+
   if (!staff) return null;
+
+  // Next upcoming available day (dates are stored sorted ascending).
+  const todayIso = toIsoDate(new Date());
+  const availableDates = availability?.availableDates ?? [];
+  const nextAvailable = availableDates.find((d) => d >= todayIso) ?? null;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -167,12 +217,72 @@ export function StaffDetailDialog({
           )}
         </div>
 
+        {/* PRN availability (per diem staff only) */}
+        {isPerDiem && (
+          <div className="mb-4">
+            <h3 className="mb-2 font-medium">Availability</h3>
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+              {loadingAvailability ? (
+                <p className="text-muted-foreground">
+                  Loading availability...
+                </p>
+              ) : availableDates.length > 0 ? (
+                <p>
+                  <span className="font-medium">
+                    {availableDates.length} day
+                    {availableDates.length === 1 ? "" : "s"} on file
+                  </span>
+                  {nextAvailable && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      (next:{" "}
+                      {format(
+                        new Date(nextAvailable + "T00:00:00"),
+                        "EEE MMM d"
+                      )}
+                      )
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="text-muted-foreground">
+                  No availability on file
+                </p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRecordOpen(true)}
+              >
+                <CalendarPlus className="size-3.5" />
+                Record availability
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Calendar */}
         <div>
           <h3 className="mb-2 font-medium">Schedule Calendar</h3>
           <StaffCalendar staffId={staff.id} />
         </div>
       </DialogContent>
+
+      {isPerDiem && (
+        <RecordAvailabilityDialog
+          open={recordOpen}
+          onOpenChange={setRecordOpen}
+          staff={[
+            {
+              id: staff.id,
+              firstName: staff.firstName,
+              lastName: staff.lastName,
+            },
+          ]}
+          preselectedStaffId={staff.id}
+          onSaved={fetchAvailability}
+        />
+      )}
     </Dialog>
   );
 }

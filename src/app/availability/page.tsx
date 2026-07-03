@@ -1,31 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { CalendarPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { InfoTip, TERM_HELP } from "@/components/ui/info-tip";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import { PresetChips } from "@/components/prn-availability/preset-chips";
-import { useToast } from "@/components/ui/toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { RecordAvailabilityDialog } from "@/components/prn-availability/record-availability-dialog";
 import {
   Table,
   TableBody,
@@ -34,7 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { serializeAvailableDates, toIsoDate } from "@/lib/prn-availability";
 
 interface PRNAvailability {
   id: string;
@@ -55,29 +35,16 @@ interface StaffMember {
   employmentType: string;
 }
 
-// Availability window: today through +90 days.
-function availabilityBounds(): { from: Date; to: Date } {
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 90);
-  return { from, to };
-}
-
 export default function AvailabilityPage() {
-  const { addToast } = useToast();
   const [availability, setAvailability] = useState<PRNAvailability[]>([]);
   const [prnStaff, setPrnStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Record-availability dialog state.
+  // Record-availability dialog state (the shared dialog owns the form).
   const [open, setOpen] = useState(false);
-  const [selectedStaffId, setSelectedStaffId] = useState<string>("");
-  const [selectedDates, setSelectedDates] = useState<Date[]>([]);
-  const [notes, setNotes] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const { from, to } = useMemo(availabilityBounds, []);
+  const [preselectedStaffId, setPreselectedStaffId] = useState<
+    string | undefined
+  >(undefined);
 
   const fetchData = useCallback(async () => {
     const [availRes, staffRes] = await Promise.all([
@@ -95,88 +62,15 @@ export default function AvailabilityPage() {
     fetchData();
   }, [fetchData]);
 
-  // Group availability by staff
-  const availabilityByStaff = new Map<string, PRNAvailability>();
-  for (const a of availability) {
-    availabilityByStaff.set(a.staffId, a);
-  }
-
   // Find PRN staff who haven't submitted
   const submittedStaffIds = new Set(availability.map(a => a.staffId));
   const missingSubmissions = prnStaff.filter(s => !submittedStaffIds.has(s.id));
 
-  const selectedIso = useMemo(
-    () => serializeAvailableDates(selectedDates.map(toIsoDate)),
-    [selectedDates]
-  );
-
   // Open the dialog, optionally pre-selecting a nurse (from a Missing banner
-  // chip) and pre-loading any availability they already have on file.
+  // chip). The dialog pre-loads any availability they already have on file.
   function openDialog(staffId?: string) {
-    const targetId = staffId ?? "";
-    setSelectedStaffId(targetId);
-    const current = targetId ? availabilityByStaff.get(targetId) : undefined;
-    setSelectedDates(
-      (current?.availableDates ?? []).map((d) => new Date(d + "T00:00:00"))
-    );
-    setNotes(current?.notes ?? "");
+    setPreselectedStaffId(staffId);
     setOpen(true);
-  }
-
-  // When the manager picks a different nurse mid-dialog, reload that nurse's
-  // existing dates/notes so an edit replaces rather than blanks their record.
-  function onStaffChange(staffId: string) {
-    setSelectedStaffId(staffId);
-    const current = availabilityByStaff.get(staffId);
-    setSelectedDates(
-      (current?.availableDates ?? []).map((d) => new Date(d + "T00:00:00"))
-    );
-    setNotes(current?.notes ?? "");
-  }
-
-  const canSubmit = !!selectedStaffId && !submitting;
-
-  async function submit() {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch("/api/prn-availability", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          staffId: selectedStaffId,
-          availableDates: selectedIso,
-          notes: notes.trim() || null,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        addToast({
-          title: "Could not save availability",
-          description: err.error ?? "Please try again.",
-          variant: "error",
-        });
-        return;
-      }
-      const staffName = prnStaff.find((s) => s.id === selectedStaffId);
-      addToast({
-        title: "Availability recorded",
-        description: staffName
-          ? `${staffName.firstName} ${staffName.lastName}: ${selectedIso.length} day${selectedIso.length === 1 ? "" : "s"}.`
-          : `${selectedIso.length} day${selectedIso.length === 1 ? "" : "s"} recorded.`,
-        variant: "success",
-      });
-      setOpen(false);
-      await fetchData();
-    } catch {
-      addToast({
-        title: "Could not save availability",
-        description: "Please try again.",
-        variant: "error",
-      });
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (
@@ -306,82 +200,13 @@ export default function AvailabilityPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Record availability</DialogTitle>
-            <DialogDescription>
-              Enter the days a PRN nurse told you they can work. Saving replaces
-              their current availability.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="prn-staff">PRN staff</Label>
-              <Select value={selectedStaffId} onValueChange={onStaffChange}>
-                <SelectTrigger id="prn-staff" className="w-full">
-                  <SelectValue placeholder="Select a PRN nurse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {prnStaff.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.firstName} {s.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Available days</Label>
-              <PresetChips
-                selected={selectedDates}
-                onChange={setSelectedDates}
-                from={from}
-                to={to}
-              />
-              <div className="flex justify-center rounded-md border">
-                <Calendar
-                  mode="multiple"
-                  selected={selectedDates}
-                  onSelect={(days) => setSelectedDates(days ?? [])}
-                  disabled={{ before: from, after: to }}
-                  startMonth={from}
-                  endMonth={to}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {selectedIso.length} day{selectedIso.length === 1 ? "" : "s"} selected
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="prn-notes">Notes (optional)</Label>
-              <Textarea
-                id="prn-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Anything worth noting about this availability"
-                rows={2}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button onClick={submit} disabled={!canSubmit}>
-              {submitting ? "Saving…" : "Save availability"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RecordAvailabilityDialog
+        open={open}
+        onOpenChange={setOpen}
+        staff={prnStaff}
+        preselectedStaffId={preselectedStaffId}
+        onSaved={fetchData}
+      />
     </div>
   );
 }
