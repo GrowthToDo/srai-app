@@ -13,7 +13,15 @@ const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(scriptsDir, "..");
 const args = process.argv.slice(2);
 const sinceIdx = args.indexOf("--since");
-const ref = sinceIdx !== -1 ? args[sinceIdx + 1] : "HEAD";
+let ref = "HEAD";
+if (sinceIdx !== -1) {
+  const next = args[sinceIdx + 1];
+  if (!next || next.startsWith("--")) {
+    console.warn("--since given without a ref — using HEAD");
+  } else {
+    ref = next;
+  }
+}
 const full = args.includes("--full");
 
 function run(cmd, cmdArgs) {
