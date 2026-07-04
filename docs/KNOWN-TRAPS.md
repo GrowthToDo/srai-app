@@ -57,3 +57,7 @@ rule is in CLAUDE.md and is not optional.
 - **A subagent's self-report is a hypothesis.** One under-reported its edits
   by ~7x. `npm run ground-truth` prints the facts; the verifier agent
   adversarially checks claims. Accept nothing without the diff.
+
+## Maintenance log
+
+- 2026-07-04 — file created as part of the post-Fable operating system (spec: docs/superpowers/specs/2026-07-03-post-fable-operating-system-design.md).
