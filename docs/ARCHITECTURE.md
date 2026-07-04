@@ -2,7 +2,7 @@
 
 Session-boot system map. Pointers, not duplicated logic — code is the truth.
 Sections: Scheduling engine · Rule engine · Onboarding guide · Auth ·
-Nurse portal · PRN availability · Notifications · Env flags · Deploy pipeline.
+Nurse portal · PRN availability · Notifications · Env flags · Deploy (Railway).
 
 ## Scheduling engine
 
@@ -153,13 +153,15 @@ exactly one availability row per schedule. UI callers omit `scheduleId` and
 the route defaults it to `PRN_TEMPLATE_SCHEDULE_ID`; only the Excel importer
 sends an explicit one.
 
-The same dialog component, `RecordAvailabilityDialog`
-(`src/components/prn-availability/record-availability-dialog.tsx`), backs
-both the manager's quick-entry flow (`/availability`, staff detail dialog)
-and nurse self-serve. Preset weekday chips ("all Saturdays," etc.) are
-computed by `togglePreset()`/`datesForWeekdays()` in
-`src/lib/prn-availability.ts`, shared by both entry points so the date math
-can't drift between manager and nurse forms.
+The dialog component `RecordAvailabilityDialog`
+(`src/components/prn-availability/record-availability-dialog.tsx`) backs
+only the manager's two entry points: the `/availability` page and the staff
+detail dialog. Nurse self-serve at `/my/availability` does not use this
+dialog — it renders its own mobile form directly from `PresetChips` and
+`Calendar`. Preset weekday chips ("all Saturdays," etc.) are computed by
+`togglePreset()`/`datesForWeekdays()` in `src/lib/prn-availability.ts`,
+shared by both entry points so the date math can't drift between manager
+and nurse forms.
 
 Nurse self-serve lives at `/my/availability` and is gated to
 `employmentType === "per_diem"` — full-time/part-time nurses get a message
