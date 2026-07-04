@@ -34,6 +34,11 @@ rule is in CLAUDE.md and is not optional.
   watchdog. Check the count, not the build.
 - **Build script must stay pure `next build`.** Schema push happens at
   `prestart` (drizzle-kit push against the mounted volume), not at build.
+- **Railway's `npm ci` runs the `prepare` lifecycle script with NO `.git`
+  directory** (the build container gets an exported tree, not a checkout), so
+  a bare `git config` in `prepare` fails with exit 128 and kills the image
+  build. `scripts/setup-hooks.mjs` guards this — keep the `existsSync(".git")`
+  check if you touch it.
 
 ## Data / domain
 

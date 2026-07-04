@@ -19,7 +19,7 @@
     "test:watch": "vitest",
     "verify": "node scripts/verify.mjs",
     "ground-truth": "node scripts/ground-truth.mjs",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "node scripts/setup-hooks.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
