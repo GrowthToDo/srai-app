@@ -4,11 +4,11 @@ Quick reference for the built-in demo accounts. These only work when auth is
 enabled (`AUTH_ENABLED=true`); with the flag off (the local default) the app
 needs no login at all.
 
-| Account | Email | Password | What you see |
-| --- | --- | --- | --- |
-| **Manager** | `admin@cah.local` | `changeme-dev` | Full manager app (dashboard, schedules, approvals) |
-| **Nurse — James Wilson** (full-time RN, L5 charge) | `james.wilson@cah.local` | `demo1234` | Nurse portal `/my`: schedule calendar, call out, leave, swaps, notifications |
-| **Nurse — Olivia Bennett** (per-diem RN) | `olivia.bennett@cah.local` | `demo1234` | Same as James **plus the Availability tab** (per-diem only) |
+| Account                                            | Email                      | Password       | What you see                                                                 |
+| -------------------------------------------------- | -------------------------- | -------------- | ---------------------------------------------------------------------------- |
+| **Manager**                                        | `admin@cah.local`          | `changeme-dev` | Full manager app (dashboard, schedules, approvals)                           |
+| **Nurse — James Wilson** (full-time RN, L5 charge) | `james.wilson@cah.local`   | `demo1234`     | Nurse portal `/my`: schedule calendar, call out, leave, swaps, notifications |
+| **Nurse — Olivia Bennett** (per-diem RN)           | `olivia.bennett@cah.local` | `demo1234`     | Same as James **plus the Availability tab** (per-diem only)                  |
 
 Notes:
 
@@ -24,3 +24,14 @@ Notes:
 - **These are demo defaults, intentionally weak and public.** Before any real
   pilot: set a strong manager password via env, rotate/disable the demo nurses,
   and set `DEMO_PREFILL=false`. Full details: `docs/nurse-auth-phase1-spec.md`.
+
+## Manager-open demo mode
+
+`AUTH_SCOPE=nurse_only` opens every manager page and API directly (no login)
+while the nurse portal (`/my`, `/api/my/*`) still requires a real nurse login:
+
+`AUTH_ENABLED=true AUTH_SCOPE=nurse_only DEMO_PREFILL=true AUTH_SECRET=local-test-secret npm run dev`
+
+This is for local/demo use only — a real pilot always runs with full scope
+(`AUTH_SCOPE` unset or any value other than `nurse_only`), which requires a
+login for every surface as documented above.

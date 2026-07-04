@@ -109,6 +109,12 @@ otherwise every request passes through unauthenticated
 `AUTH_ENABLED` is true and `AUTH_SECRET` is unset, middleware throws at
 startup rather than silently running unsigned sessions.
 
+`AUTH_SCOPE=nurse_only` (local/demo only) narrows enforcement to just the
+nurse portal (`/my*`, `/api/my*`): manager surfaces become reachable with no
+login, and anonymous requests to them have any incoming `x-user-id` /
+`x-user-role` / `x-staff-id` headers stripped before passing through, so a
+client can't spoof identity on the open path.
+
 `provisionAuthUsers()` (`src/lib/auth/provision-users.ts`) re-creates the
 demo manager login (`SEED_MANAGER_EMAIL`/`SEED_MANAGER_PASSWORD`, defaulting
 to `admin@cah.local` / `changeme-dev`) after every Excel data import, since
@@ -195,6 +201,10 @@ Key files: `src/lib/notifications/notify.ts`, `src/db/schema.ts`
 - `AUTH_ENABLED` — `"true"` turns on session-cookie auth in
   `src/middleware.ts`; any other value (including unset) leaves every route
   open.
+- `AUTH_SCOPE` — `"nurse_only"` (only meaningful when `AUTH_ENABLED=true`)
+  opens manager surfaces with no login and keeps only the nurse portal
+  (`/my*`, `/api/my*`) enforced; any other value (including unset) is `"all"`,
+  today's fully-gated behavior. Local/demo only — see `DEMO-LOGINS.md`.
 - `AUTH_SECRET` — HMAC signing key for the session cookie
   (`src/lib/auth/session.ts`); required in production when `AUTH_ENABLED`
   is true (middleware throws at startup otherwise).

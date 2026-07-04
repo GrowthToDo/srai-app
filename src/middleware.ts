@@ -20,7 +20,7 @@ if (
   !process.env.AUTH_SECRET
 ) {
   throw new Error(
-    "AUTH_SECRET is required when AUTH_ENABLED=true in production. Set it in the environment before starting."
+    "AUTH_SECRET is required when AUTH_ENABLED=true in production. Set it in the environment before starting.",
   );
 }
 if (
@@ -33,11 +33,18 @@ if (
       "  WARNING: DEMO_PREFILL=true in PRODUCTION.\n" +
       "  The login page will pre-fill demo nurse credentials and\n" +
       "  expose a shared demo account. Disable for a real launch.\n" +
-      "============================================================\n"
+      "============================================================\n",
   );
 }
 
 const AUTH_ENABLED = process.env.AUTH_ENABLED === "true";
+
+// AUTH_SCOPE=nurse_only: manager surfaces are directly reachable (no login),
+// only the nurse portal (/my*, /api/my*) stays enforced. Any other value
+// (including unset) is "all" — today's fully-gated behavior, unchanged. Only
+// meaningful when AUTH_ENABLED is true; local/demo use only (see DEMO-LOGINS.md).
+const AUTH_SCOPE =
+  process.env.AUTH_SCOPE === "nurse_only" ? "nurse_only" : "all";
 
 function unauthorizedJson(): NextResponse {
   return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -49,6 +56,16 @@ function forbiddenJson(): NextResponse {
 
 function isApiPath(pathname: string): boolean {
   return pathname === "/api" || pathname.startsWith("/api/");
+}
+
+/** True for the nurse portal surface: /my, /my/*, /api/my, /api/my/*. */
+function isNurseSurface(pathname: string): boolean {
+  return (
+    pathname === "/my" ||
+    pathname.startsWith("/my/") ||
+    pathname === "/api/my" ||
+    pathname.startsWith("/api/my/")
+  );
 }
 
 export async function middleware(request: NextRequest) {
@@ -63,6 +80,19 @@ export async function middleware(request: NextRequest) {
 
   // Invalid / missing session.
   if (!payload) {
+    // Demo/local mode: manager surfaces are open with no login; only the
+    // nurse portal stays enforced. Anonymous requests must not be able to
+    // spoof identity headers, so strip any incoming ones before passing
+    // through — the enforced (nurse) path below is the only one allowed to
+    // set them.
+    if (AUTH_SCOPE === "nurse_only" && !isNurseSurface(pathname)) {
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.delete("x-user-id");
+      requestHeaders.delete("x-user-role");
+      requestHeaders.delete("x-staff-id");
+      return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+
     if (isApiPath(pathname)) return unauthorizedJson();
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
@@ -101,8 +131,8 @@ export async function middleware(request: NextRequest) {
     response.headers.append(
       "Set-Cookie",
       `${SESSION_COOKIE_NAME}=${refreshed}${sessionCookieAttributes(
-        SESSION_MAX_AGE_SECONDS
-      )}`
+        SESSION_MAX_AGE_SECONDS,
+      )}`,
     );
   }
 

@@ -31,3 +31,7 @@ decisions get appended in the same session they are made (CLAUDE.md rule).
 - **2026-07 — Post-Fable operating model.** Opus orchestrates, Sonnet workers
   (`fast-worker`/`verifier`), Opus `deep-reasoner` for second opinions. Spec:
   docs/superpowers/specs/2026-07-03-post-fable-operating-system-design.md.
+- **2026-07 — AUTH_SCOPE=nurse_only demo mode.** Manager surfaces open, nurse
+  portal enforced; chosen so the founder can demo the manager app without
+  login while nurse logins stay real. Anonymous pass-through strips identity
+  headers to prevent spoofing. Local/demo only.
