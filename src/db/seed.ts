@@ -16,6 +16,8 @@ const db = drizzle(sqlite, { schema });
 
 async function seed() {
   await seedDatabase(sqlite, db);
+  // Auth accounts (manager + 2 demo nurses) are provisioned solely here,
+  // idempotently — keep in sync with DEMO-LOGINS.md.
   provisionAuthUsers(db);
   process.exit(0);
 }

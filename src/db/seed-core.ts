@@ -2,7 +2,6 @@ import type Database from "better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 import { addDays, format } from "date-fns";
-import { hashPassword } from "../lib/auth/password";
 
 function uuid() {
   return crypto.randomUUID();
@@ -809,44 +808,6 @@ export async function seedDatabase(
       .run();
   }
   console.log(`✓ Created ${staffData.length} staff members`);
-
-  // ============================================================
-  // USERS (Phase 1 auth): one manager + one demo nurse
-  // ============================================================
-  // Manager account — no linked staff record. Credentials come from env so a
-  // real deploy can set its own; dev falls back to admin@cah.local / changeme-dev.
-  db.insert(schema.user)
-    .values({
-      id: uuid(),
-      email: process.env.SEED_MANAGER_EMAIL ?? "admin@cah.local",
-      role: "manager",
-      staffId: null,
-      passwordHash: hashPassword(
-        process.env.SEED_MANAGER_PASSWORD ?? "changeme-dev",
-      ),
-    })
-    .run();
-
-  // Demo nurse — linked to James Wilson's staff row (found by name).
-  const jamesWilson = staffData.find(
-    (s) => s.firstName === "James" && s.lastName === "Wilson",
-  );
-  if (jamesWilson) {
-    db.insert(schema.user)
-      .values({
-        id: uuid(),
-        email: "james.wilson@cah.local",
-        role: "nurse",
-        staffId: jamesWilson.id,
-        passwordHash: hashPassword("demo1234"),
-      })
-      .run();
-    console.log("✓ Created 2 users (manager + demo nurse James Wilson)");
-  } else {
-    console.log(
-      "✓ Created 1 user (manager); James Wilson not found for demo nurse",
-    );
-  }
 
   // Create staff preferences
   const shiftPrefs = ["day", "night", "evening", "any"] as const;
