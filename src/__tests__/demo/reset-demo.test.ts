@@ -49,6 +49,7 @@ beforeEach(() => {
   }
 
   process.env.DATABASE_PATH = scratchDbPath;
+  process.env.DEMO_MODE = "true";
 });
 
 afterEach(() => {
@@ -80,6 +81,14 @@ async function loadDb() {
 }
 
 describe("resetDemoData", () => {
+  it('refuses to run when DEMO_MODE is not "true"', async () => {
+    delete process.env.DEMO_MODE;
+    const resetDemoData = await loadResetDemoData();
+    await expect(resetDemoData()).rejects.toThrow(
+      "resetDemoData is demo-only: refusing to run without DEMO_MODE=true",
+    );
+  });
+
   it("produces a published schedule with assignments, demo users, and one pending swap", async () => {
     const resetDemoData = await loadResetDemoData();
     const { scheduleId } = await resetDemoData();

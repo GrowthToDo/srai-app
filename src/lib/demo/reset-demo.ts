@@ -32,6 +32,12 @@ const DEMO_SCHEDULE_WEEKS = 6;
  * DEMO-ONLY: callers must gate on DEMO_MODE (the API route does).
  */
 export async function resetDemoData(): Promise<{ scheduleId: string }> {
+  if (process.env.DEMO_MODE !== "true") {
+    throw new Error(
+      "resetDemoData is demo-only: refusing to run without DEMO_MODE=true",
+    );
+  }
+
   // 1. Wipe + reseed the full test dataset (units, staff, rules, a draft
   // schedule with manual assignments, etc). Extracted from db:seed so this
   // reset endpoint can reuse it — see src/db/seed-core.ts.
