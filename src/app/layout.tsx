@@ -3,6 +3,7 @@ import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { Providers } from "@/components/layout/providers";
+import { DemoBanner } from "@/components/demo-banner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -44,6 +45,7 @@ export default function RootLayout({
         className={`${inter.variable} ${fraunces.variable} font-sans antialiased`}
       >
         <Providers>
+          <DemoBanner />
           <AppShell>{children}</AppShell>
         </Providers>
       </body>
