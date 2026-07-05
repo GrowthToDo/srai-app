@@ -249,3 +249,13 @@ Neither defense fires at runtime (single server process, real volume
 already mounted).
 
 Key files: `package.json` (scripts), `next.config.ts`, `src/db/index.ts`.
+
+### Demo showroom
+
+A second Railway service from this same repo (`DEMO_MODE=true`, own volume,
+own secrets) serves the sales demo: seeded fictional hospital, published
+schedule, amber demo banner, and a guarded `POST /api/demo/reset` that wipes
+back to pristine (bearer `DEMO_RESET_SECRET` or same-origin; 60s limit;
+`resetDemoData()` throws outside demo mode). Setup + operations:
+`docs/DEMO-SETUP.md`. Key files: `src/lib/demo/reset-demo.ts`,
+`src/app/api/demo/`, `src/components/demo-banner.tsx`, `src/db/seed-core.ts`.

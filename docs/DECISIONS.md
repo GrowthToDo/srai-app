@@ -35,3 +35,9 @@ decisions get appended in the same session they are made (CLAUDE.md rule).
   portal enforced; chosen so the founder can demo the manager app without
   login while nurse logins stay real. Anonymous pass-through strips identity
   headers to prevent spoofing. Local/demo only.
+- **2026-07 — Demo showroom as separate service.** Second Railway service +
+  `DEMO_MODE` flag + guarded reset endpoint (bearer secret or same-origin;
+  60s limit; `resetDemoData()` throws outside demo mode); becomes a `demo`
+  tenant after the P2 tenancy work and the service is retired (spec §4/§7).
+  Same-origin resets are allowed because demo data is disposable by
+  definition. Runbook: `docs/DEMO-SETUP.md`.

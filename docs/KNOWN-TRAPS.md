@@ -66,3 +66,15 @@ rule is in CLAUDE.md and is not optional.
 ## Maintenance log
 
 - 2026-07-04 — file created as part of the post-Fable operating system (spec: docs/superpowers/specs/2026-07-03-post-fable-operating-system-design.md).
+- 2026-07-04 — two new traps from the demo-showroom rehearsal:
+  - **Only one `next dev` per checkout.** Turbopack holds a lock at
+    `.next/dev/lock`; a second dev server (any port) fails with "Unable to
+    acquire lock", and there is no CLI/env override for the dist dir. Kill
+    the running server first (stale locks after force-kills: delete
+    `.next/dev/lock`). Force-killed servers can also be auto-respawned by
+    lingering child processes — verify the port with netstat after killing.
+  - **Module-scope state is unreliable under `next dev`.** The demo reset's
+    60s rate limit (module-level timestamp) does not trigger across requests
+    in dev — Turbopack workers don't share module instances. It works under
+    `next start` (single process). Don't "fix" dev behavior by moving such
+    state to the DB unless production actually needs it.

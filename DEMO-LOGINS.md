@@ -35,3 +35,12 @@ while the nurse portal (`/my`, `/api/my/*`) still requires a real nurse login:
 This is for local/demo use only — a real pilot always runs with full scope
 (`AUTH_SCOPE` unset or any value other than `nurse_only`), which requires a
 login for every surface as documented above.
+
+## Demo showroom instance
+
+The shareable demo service (see `docs/DEMO-SETUP.md`) uses these same three
+accounts, recreated on every demo reset. Prospects reach the manager app with
+no login (`AUTH_SCOPE=nurse_only`); the nurse portal demo uses James
+(pre-filled on the login page) or Olivia for the per-diem availability flow.
+Note: a demo reset recreates accounts with new internal ids, so anyone logged
+in before the reset must simply log in again.
