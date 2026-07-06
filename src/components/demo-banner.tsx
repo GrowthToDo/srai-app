@@ -32,8 +32,21 @@ export function DemoBanner() {
     let cancelled = false;
     fetch("/api/demo/status")
       .then((res) => res.json())
-      .then((body: { demo?: boolean }) => {
-        if (!cancelled && body?.demo) setDemo(true);
+      .then((body: { demo?: boolean; resetAt?: string | null }) => {
+        if (cancelled || !body?.demo) return;
+        setDemo(true);
+        // Server resets wipe the DB but can't reach this browser's
+        // localStorage — the fcg:* onboarding flags would keep steps struck
+        // out on an empty hospital. When the server's reset epoch is newer
+        // than the one this browser last saw, fire the provider's full-reset
+        // event (clears every flag key and refetches counts).
+        if (body.resetAt) {
+          const SEEN_KEY = "demo:seenResetAt";
+          if (localStorage.getItem(SEEN_KEY) !== body.resetAt) {
+            localStorage.setItem(SEEN_KEY, body.resetAt);
+            window.dispatchEvent(new Event("onboarding-reset"));
+          }
+        }
       })
       .catch(() => {
         // status check failing just means the banner stays hidden

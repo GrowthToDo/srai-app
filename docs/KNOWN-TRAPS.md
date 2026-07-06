@@ -78,3 +78,16 @@ rule is in CLAUDE.md and is not optional.
     in dev — Turbopack workers don't share module instances. It works under
     `next start` (single process). Don't "fix" dev behavior by moving such
     state to the DB unless production actually needs it.
+- 2026-07-06 — two traps from the empty-demo rework:
+  - **Client-side onboarding flags survive server resets.** The `fcg:*`
+    localStorage keys live in each visitor's browser; wiping the demo DB
+    leaves returning browsers showing a half-struck Getting Started list on
+    an empty hospital. Fixed via a reset epoch (`demo-reset-epoch.txt` next
+    to the DB, surfaced in GET /api/demo/status; DemoBanner fires
+    `onboarding-reset` when it changes). Any future "wipe the server" feature
+    must ask: what client-side state believes the old world still exists?
+  - **Never run two agent sessions with git write access on one checkout.**
+    A sibling session mistook a teammate's landed commits for a glitch and
+    `git reset --soft`'d them away (twice). Agent contracts now ban history
+    rewrites and subagent delegation; the orchestrator serializes all git
+    operations.

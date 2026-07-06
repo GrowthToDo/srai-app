@@ -1,6 +1,28 @@
+import fs from "fs";
+import path from "path";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { provisionAuthUsers } from "@/lib/auth/provision-users";
+
+// Reset epoch: written on every reset, surfaced via GET /api/demo/status so
+// browsers can drop their stale client-side onboarding flags (fcg:* in
+// localStorage survives server wipes — a returning tester would otherwise see
+// a half-completed Getting Started checklist on an empty hospital). Lives next
+// to the DB file so it persists across deploys on the mounted volume.
+function epochPath(): string {
+  const dbPath =
+    process.env.DATABASE_PATH ?? path.join(process.cwd(), "cah-scheduler.db");
+  return path.join(path.dirname(dbPath), "demo-reset-epoch.txt");
+}
+
+/** ISO timestamp of the last demo reset, or null before the first one. */
+export function getDemoResetEpoch(): string | null {
+  try {
+    return fs.readFileSync(epochPath(), "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Wipes the demo instance back to a completely empty hospital. The demo no
@@ -47,6 +69,9 @@ export async function resetDemoData(): Promise<{ staffCount: number }> {
   // Auth accounts: with no staff left, nurse logins skip gracefully
   // (skippedNoStaff: true) and only the manager account gets (re)created.
   provisionAuthUsers(db);
+
+  // Stamp the reset epoch (see getDemoResetEpoch above).
+  fs.writeFileSync(epochPath(), new Date().toISOString() + "\n");
 
   const staffCount = db.select().from(schema.staff).all().length;
   return { staffCount };

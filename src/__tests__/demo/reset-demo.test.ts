@@ -112,6 +112,13 @@ describe("resetDemoData", () => {
     const users = db.select().from(schema.user).all();
     expect(users.length).toBe(1);
     expect(users[0].role).toBe("manager");
+
+    // The reset epoch is stamped so browsers can invalidate stale local
+    // onboarding flags (served via GET /api/demo/status).
+    const { getDemoResetEpoch } = await import("@/lib/demo/reset-demo");
+    const epoch = getDemoResetEpoch();
+    expect(epoch).toBeTruthy();
+    expect(new Date(epoch as string).toString()).not.toBe("Invalid Date");
   });
 
   it("is idempotent — running twice leaves the same empty state", async () => {

@@ -19,9 +19,13 @@ const ORIGIN = "http://localhost:3000";
 const ORIGINAL_ENV = { ...process.env };
 
 const resetDemoDataMock = vi.fn(async () => ({ staffCount: 0 }));
+const getDemoResetEpochMock = vi.fn(
+  (): string | null => "2026-07-06T00:00:00.000Z",
+);
 
 vi.mock("@/lib/demo/reset-demo", () => ({
   resetDemoData: () => resetDemoDataMock(),
+  getDemoResetEpoch: () => getDemoResetEpochMock(),
 }));
 
 beforeEach(() => {
@@ -53,18 +57,21 @@ function makeResetRequest(
 }
 
 describe("GET /api/demo/status", () => {
-  it("DEMO_MODE unset -> {demo:false}", async () => {
+  it("DEMO_MODE unset -> {demo:false, resetAt:null} (epoch never leaks outside demo mode)", async () => {
     const { GET } = await loadRoutes({ DEMO_MODE: undefined });
     const response = await GET();
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ demo: false });
+    expect(await response.json()).toEqual({ demo: false, resetAt: null });
   });
 
-  it("DEMO_MODE=true -> {demo:true}", async () => {
+  it("DEMO_MODE=true -> {demo:true, resetAt:<epoch>}", async () => {
     const { GET } = await loadRoutes({ DEMO_MODE: "true" });
     const response = await GET();
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ demo: true });
+    expect(await response.json()).toEqual({
+      demo: true,
+      resetAt: "2026-07-06T00:00:00.000Z",
+    });
   });
 });
 

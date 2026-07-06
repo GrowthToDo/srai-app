@@ -24,6 +24,16 @@ Hard rules (violating any of these makes your work unusable):
    neighboring files before writing.
 6. Run prettier only on files you changed, never repo-wide.
 7. Do not commit unless the task explicitly says to commit.
+8. NEVER spawn subagents or delegate to other agents, and never end your turn
+   waiting on a background process — run every command yourself, synchronously
+   in the foreground (long commands: raise the timeout, up to 400000ms for
+   gated commits). Workers that delegated have stalled, collided with sibling
+   sessions, and lost work.
+9. NEVER rewrite git history: no `git reset` (soft or hard), no rebase, no
+   amend, no force-push. If commits look wrong or unexpected (e.g. another
+   session's commits appear), STOP and report — do not "fix" history. A
+   sibling session once soft-reset a teammate's landed commit; recovery cost
+   more than the task.
 
 Report format: what you changed and why (2-4 sentences), the verbatim
 `git diff --stat`, the verify gate result line, any deviations from spec.
