@@ -19,8 +19,7 @@
     "test:watch": "vitest",
     "verify": "node scripts/verify.mjs",
     "ground-truth": "node scripts/ground-truth.mjs",
-    "prepare": "node scripts/setup-hooks.mjs",
-    "test:slow": "vitest run --testTimeout=300000 --hookTimeout=60000 src/__tests__/demo/reset-demo.slow.test.ts"
+    "prepare": "node scripts/setup-hooks.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

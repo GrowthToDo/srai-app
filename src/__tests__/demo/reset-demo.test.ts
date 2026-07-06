@@ -50,7 +50,9 @@ beforeEach(() => {
 
   process.env.DATABASE_PATH = scratchDbPath;
   process.env.DEMO_MODE = "true";
-});
+}, 30_000); // drizzle-kit push spawns a subprocess; can exceed vitest's 10s
+// default hookTimeout under full-suite load even though it runs in ~1-2s
+// standalone (this hook, not resetDemoData itself, is what's slow now).
 
 afterEach(() => {
   for (const handle of openHandles) {
@@ -89,56 +91,51 @@ describe("resetDemoData", () => {
     );
   });
 
-  it("produces a published schedule with assignments, demo users, and one pending swap", async () => {
+  it("wipes everything to empty, leaving exactly one manager user", async () => {
     const resetDemoData = await loadResetDemoData();
-    const { scheduleId } = await resetDemoData();
+    const result = await resetDemoData();
+    expect(result.staffCount).toBe(0);
 
     const { db } = await loadDb();
 
-    // Schedule exists and is published.
-    const scheduleRow = db
-      .select()
-      .from(schema.schedule)
-      .all()
-      .find((s) => s.id === scheduleId);
-    expect(scheduleRow).toBeDefined();
-    expect(scheduleRow?.status).toBe("published");
-    expect(scheduleRow?.publishedAt).toBeTruthy();
+    const staff = db.select().from(schema.staff).all();
+    expect(staff.length).toBe(0);
 
-    // Assignments for that schedule > 0.
-    const assignments = db
-      .select()
-      .from(schema.assignment)
-      .all()
-      .filter((a) => a.scheduleId === scheduleId);
-    expect(assignments.length).toBeGreaterThan(0);
+    const schedules = db.select().from(schema.schedule).all();
+    expect(schedules.length).toBe(0);
 
-    // user table has the 3 demo accounts.
+    const assignments = db.select().from(schema.assignment).all();
+    expect(assignments.length).toBe(0);
+
+    // Fresh wipe means no staff, so nurse logins skip — only the manager
+    // account gets created.
     const users = db.select().from(schema.user).all();
-    const emails = users.map((u) => u.email).sort();
-    expect(emails).toEqual(
-      [
-        "admin@cah.local",
-        "james.wilson@cah.local",
-        "olivia.bennett@cah.local",
-      ].sort(),
-    );
+    expect(users.length).toBe(1);
+    expect(users[0].role).toBe("manager");
+  });
 
-    // Exactly one shift_swap_request with status 'pending'.
-    const swaps = db.select().from(schema.shiftSwapRequest).all();
-    const pending = swaps.filter((s) => s.status === "pending");
-    expect(pending.length).toBe(1);
-  }, 120_000);
-
-  it("is idempotent — running twice leaves one published schedule", async () => {
+  it("is idempotent — running twice leaves the same empty state", async () => {
     const resetDemoData = await loadResetDemoData();
     await resetDemoData();
     const second = await resetDemoData();
 
+    expect(second.staffCount).toBe(0);
+
     const { db } = await loadDb();
+
+    const staff = db.select().from(schema.staff).all();
+    expect(staff.length).toBe(0);
+
     const schedules = db.select().from(schema.schedule).all();
-    expect(schedules.length).toBe(1);
-    expect(schedules[0].id).toBe(second.scheduleId);
-    expect(schedules[0].status).toBe("published");
-  }, 240_000);
+    expect(schedules.length).toBe(0);
+
+    const assignments = db.select().from(schema.assignment).all();
+    expect(assignments.length).toBe(0);
+
+    // onConflictDoNothing in provisionAuthUsers means no duplicate manager
+    // row on the second reset.
+    const users = db.select().from(schema.user).all();
+    expect(users.length).toBe(1);
+    expect(users[0].role).toBe("manager");
+  });
 });

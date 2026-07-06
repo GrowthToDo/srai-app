@@ -56,16 +56,7 @@ if (skipTests) {
   );
 } else {
   console.log("[1/3] vitest run …");
-  // *.slow.test.ts (real-engine integration tests, minutes each) are excluded
-  // from the per-commit gate to keep commits fast; run them on demand with
-  // `npm run test:slow` after touching the code they cover (src/lib/demo/).
-  const t = run("npx", [
-    "vitest",
-    "run",
-    "--reporter=default",
-    "--exclude",
-    '"**/*.slow.test.ts"',
-  ]);
+  const t = run("npx", ["vitest", "run", "--reporter=default"]);
   const passed = t.out.match(/Tests\s+(\d+)\s+passed/);
   const failed = t.out.match(/(\d+)\s+failed/);
   state.testsPassed = passed ? Number(passed[1]) : null;

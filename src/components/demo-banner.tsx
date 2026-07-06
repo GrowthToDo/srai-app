@@ -65,7 +65,10 @@ export function DemoBanner() {
 
   return (
     <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-200">
-      <span>Demo environment — sample data, resets nightly.</span>
+      <span>
+        Demo environment — start by importing the sample roster; Reset wipes
+        everything.
+      </span>
       <Button
         size="sm"
         variant="outline"
@@ -92,8 +95,7 @@ export function DemoBanner() {
           <DialogHeader>
             <DialogTitle>Reset demo data?</DialogTitle>
             <DialogDescription>
-              This wipes all demo changes and rebuilds the sample hospital.
-              Continue?
+              This wipes ALL demo data back to an empty hospital. Continue?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

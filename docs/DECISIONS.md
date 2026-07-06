@@ -41,3 +41,9 @@ decisions get appended in the same session they are made (CLAUDE.md rule).
   tenant after the P2 tenancy work and the service is retired (spec §4/§7).
   Same-origin resets are allowed because demo data is disposable by
   definition. Runbook: `docs/DEMO-SETUP.md`.
+- **2026-07 — Demo resets to EMPTY, not furnished.** Founder pivot: the demo's
+  purpose is usability testing of the from-scratch journey, not a showroom.
+  Reset wipes to blank; the bundled sample workbook
+  (public/sample-hospital-data.xlsx, served by GET /api/import when the DB is
+  empty) is the tester's starting file. Supersedes the furnished-showroom
+  reset.

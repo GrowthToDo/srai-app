@@ -18,7 +18,7 @@ import { NextRequest } from "next/server";
 const ORIGIN = "http://localhost:3000";
 const ORIGINAL_ENV = { ...process.env };
 
-const resetDemoDataMock = vi.fn(async () => ({ scheduleId: "schedule-1" }));
+const resetDemoDataMock = vi.fn(async () => ({ staffCount: 0 }));
 
 vi.mock("@/lib/demo/reset-demo", () => ({
   resetDemoData: () => resetDemoDataMock(),
@@ -109,10 +109,7 @@ describe("POST /api/demo/reset", () => {
       makeResetRequest({ headers: { authorization: "Bearer s3cr3t" } }),
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      scheduleId: "schedule-1",
-    });
+    expect(await response.json()).toEqual({ ok: true });
     expect(resetDemoDataMock).toHaveBeenCalledTimes(1);
   });
 
@@ -141,10 +138,7 @@ describe("POST /api/demo/reset", () => {
       makeResetRequest({ headers: { origin: ORIGIN } }),
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      scheduleId: "schedule-1",
-    });
+    expect(await response.json()).toEqual({ ok: true });
     expect(resetDemoDataMock).toHaveBeenCalledTimes(1);
   });
 

@@ -35,6 +35,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "too many resets" }, { status: 429 });
   }
   lastResetAt = Date.now();
-  const { scheduleId } = await resetDemoData();
-  return NextResponse.json({ ok: true, scheduleId });
+  await resetDemoData();
+  return NextResponse.json({ ok: true });
 }
