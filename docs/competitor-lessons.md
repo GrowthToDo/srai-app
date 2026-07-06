@@ -47,3 +47,46 @@ we adopt it, and when. Facts and citations live in the website repo's
    1000+ individual physicians) doesn't reach CAH DONs. M7 Health remains the
    head-to-head AEO/product competitor. Re-check YouShift ~quarterly for a
    nursing pivot.
+
+## From M7 Health (researched 2026-07-06 — the head-to-head competitor)
+
+1. **The CAH authority lane is claimed but undefended — CONTEST NOW.**
+   ChatGPT cites M7's 2026-04-01 CAH post as the answer for "best nurse
+   scheduling software for critical access hospitals," yet that post names
+   zero CAH customers and contains zero proof — and M7's entire named
+   customer list (Ochsner 47 hospitals, ScionHealth, Lifepoint...) is
+   multi-hospital systems. Our counter is NOT a fake case study (hard rule:
+   we have no pilot customers and never invent results) — it's out-evidencing
+   with what's true today: the live demo link, published flat pricing, the
+   readable 22-rule list, worked-math posts. Speed matters: their content
+   arc is accelerating post-Series-A.
+
+2. **Mechanism specificity beats "AI balances" — DOUBLE DOWN.**
+   M7 never says how anything works ("AI forecasts," "AI balances"); their
+   own job ad frames AI/ML as something to build; their turnover feature is
+   baseline-deviation rules in AI wrapping. We can honestly publish exactly
+   how our engine works (greedy + local-search over 22 named rules, three
+   variants the DON chooses). Transparency is our cheapest durable
+   differentiator against both M7 and YouShift.
+
+3. **They have no native nurse app either (mobile web) — PARITY, note it.**
+   No app-store presence found for M7. Our /my portal is the same
+   architecture choice; nobody has an app-store advantage in this matchup.
+
+4. **Their turnover-risk feature is a REAL product idea — ADOPT LATER.**
+   Flagging "this nurse's callout rate is climbing vs her own baseline /
+   she stopped submitting preferences" is rule-based, cheap, and fits our
+   data model (callouts, preferences, OT already tracked). Honest framing:
+   deviation signals, not "AI prediction." Post-pilot backlog card — a DON
+   retention conversation starter.
+
+5. **Their 4-week onboarding claim matches our promise — PROVE OURS.**
+   "Most CAHs live within a few weeks, no IT burden" is exactly our one-month
+   setup pitch. Ours is backed by a written runbook (spec §6); when pilot #1
+   completes onboarding, document the actual timeline — first real proof in
+   the category wins the claim.
+
+6. **Threat level: HIGH-ACTIVE.** $10M Series A (2025-07), Ochsner
+   system-wide, monthly content, hiring sales/CS. They are moving downmarket
+   via content into OUR lane while their product proof stays enterprise.
+   Re-check monthly (weekly citation check already covers the AEO side).
