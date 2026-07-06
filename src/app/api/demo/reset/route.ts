@@ -18,7 +18,16 @@ export async function POST(request: NextRequest) {
       return null;
     }
   })();
-  const sameOrigin = !!originHost && originHost === request.nextUrl.host;
+  // Behind Railway's proxy, nextUrl.host is the container-internal host while
+  // the browser's Origin carries the public domain — compare against the
+  // proxy-provided x-forwarded-host too, or the banner's same-origin reset
+  // 401s in production. (Spoofing x-forwarded-host only buys a demo reset.)
+  const requestHosts = [
+    request.nextUrl.host,
+    request.headers.get("x-forwarded-host"),
+    request.headers.get("host"),
+  ].filter(Boolean);
+  const sameOrigin = !!originHost && requestHosts.includes(originHost);
   if (!bearerOk && !sameOrigin) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

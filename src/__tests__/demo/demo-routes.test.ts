@@ -147,4 +147,40 @@ describe("POST /api/demo/reset", () => {
     });
     expect(resetDemoDataMock).toHaveBeenCalledTimes(1);
   });
+
+  it("DEMO_MODE=true, origin matches x-forwarded-host (reverse proxy) -> 200", async () => {
+    // Railway's proxy: nextUrl.host is container-internal, the public domain
+    // arrives via x-forwarded-host. The banner's same-origin reset must pass.
+    const { POST } = await loadRoutes({
+      DEMO_MODE: "true",
+      DEMO_RESET_SECRET: "s3cr3t",
+    });
+    const response = await POST(
+      makeResetRequest({
+        headers: {
+          origin: "https://public-demo.example.com",
+          "x-forwarded-host": "public-demo.example.com",
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(resetDemoDataMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DEMO_MODE=true, foreign origin not matching any request host -> 401", async () => {
+    const { POST } = await loadRoutes({
+      DEMO_MODE: "true",
+      DEMO_RESET_SECRET: "s3cr3t",
+    });
+    const response = await POST(
+      makeResetRequest({
+        headers: {
+          origin: "https://attacker.example.net",
+          "x-forwarded-host": "public-demo.example.com",
+        },
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(resetDemoDataMock).not.toHaveBeenCalled();
+  });
 });
