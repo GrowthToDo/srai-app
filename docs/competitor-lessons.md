@@ -90,3 +90,50 @@ we adopt it, and when. Facts and citations live in the website repo's
    system-wide, monthly content, hiring sales/CS. They are moving downmarket
    via content into OUR lane while their product proof stays enterprise.
    Re-check monthly (weekly citation check already covers the AEO side).
+
+## AI landscape — how we use AI vs how they (probably) do
+
+Recorded 2026-07-06 so the reasoning survives the session. Mechanisms below
+for competitors are informed inference — neither company discloses its stack.
+
+**Us (fact, not inference):** the scheduling engine is classical algorithmic
+optimization — greedy construction + local-search improvement over 22
+explicit rules, three weighted variants (Balanced/Fair/Cost) the DON chooses
+from. Deterministic, auditable, seconds-fast, zero LLM in the product
+runtime. No ML trained on data, no demand forecasting from history (never
+claim these). The LLM kind of AI lives in the SERVICE layer: AI agents build
+and operate the product, and the managed-service delivery (imports, rule
+tuning, support) is founder+AI labor. That is the honest content of
+"AI-native service."
+
+**YouShift ("optimization algorithms + agentic AI"):** solver undisclosed;
+founders describe the problem correctly as constrained multi-objective
+allocation, so a conventional optimizer almost certainly does the math. The
+"agentic AI" layer (their job ad: "AI agent layer... turning real-world
+operational workflows into agentic, automated systems") is best read as LLM
+agents wrapped AROUND the solver — the LLM mediates, never decides:
+
+- natural-language rule setup (admin types a rule, agent translates it into
+  solver constraints)
+- exception handling (callout arrives, agent evaluates candidates, drafts
+  and chases messages, proposes swap chains)
+- conversational schedule edits ("move X off Thursday, keep coverage" →
+  agent computes minimal repair and proposes it)
+- plain-language explanations of constraint decisions
+
+Risk profile of that pattern in a compliance domain: an LLM mis-translating
+a rest rule is a patient-safety-adjacent bug — which is exactly why the
+agent layer stays an interface, not an authority.
+
+**M7 ("AI forecasts / AI balances"):** outcome-framed language only, never
+mechanism; own job ad frames AI/ML as capabilities TO BUILD; flagship
+"AI-powered" turnover feature self-describes as baseline-deviation rules.
+Assessment: rule-driven heart, AI costume.
+
+**Our roadmap equivalents (post-revenue, DON stays in command):** the two
+agentic features that fit CAH life are natural-language rule configuration
+and callout-communication drafting; "explain this schedule" narration is a
+close third. Solver upgrades (OPTIMUS / CP-SAT spike) are a separate axis
+from the agentic layer — do not conflate them. Core thesis: agentic AI is
+not a moat; it is LLM glue around the same math all three products run.
+Workflow fit for a 25-bed hospital is the moat.
