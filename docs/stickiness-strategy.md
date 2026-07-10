@@ -130,7 +130,11 @@ usability sessions specifically.
   read-only surfaces over data we already store.
 - **Phase B — once nurses are active:** open-shift eligibility
   notifications (nurse-side money loop); "your preferences honored: 8/10
-  this cycle" transparency card (trust + investment reward).
+  this cycle" transparency card (trust + investment reward). NOTE: this is
+  NEW nurse-portal surface — today open shifts are manager-side only (the
+  system ranks candidates, the DON calls the nurse; nurses neither see nor
+  claim open shifts in /my). Design as notify + express-interest with DON
+  confirmation — never nurse self-assignment.
 - **Phase C — insight rewards:** turnover-risk deviation cards for the
   DON (see competitor-lessons.md M7 item 4 — honest baseline-deviation
   framing); cycle-over-cycle trends (violations, OT, fairness spread).

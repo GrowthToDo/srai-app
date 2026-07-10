@@ -217,6 +217,25 @@ start until P1's session/tenant claim shape is settled. Every phase runs
 under the repo's operating model: spec → plan → subagent execution → verify
 gate → ground-truth (see `CLAUDE.md`).
 
+### 7.1 Post-launch product phases (stickiness — from `docs/stickiness-strategy.md`)
+
+Gated on pilot #1 being live, not on calendar. All three P6 items are
+read-only surfaces over data the product already stores — low risk, high
+retention leverage. Details, rationale, personas, and the anti-pattern
+guardrails live in the strategy doc; this table only sequences them.
+
+| Phase | What                                                                                                                                                                            | Effort  | Gate                                 |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------ |
+| P6    | Stickiness Phase A: DON weekly digest email; admin monthly staffing-health report; visible per-nurse fairness ledger (holiday/weekend history)                                  | 1–2 wks | Pilot #1 live                        |
+| P7    | Stickiness Phase B: open-shift eligibility notifications to nurses (express-interest flow — DON still confirms; never auto-assign) + "preferences honored: N/M this cycle" card | ~1 wk   | Nurse-portal adoption evidence in P6 |
+| P8    | Stickiness Phase C: turnover-risk deviation cards (honest baseline-deviation framing, see competitor-lessons.md) + cycle-over-cycle trends                                      | ~1 wk   | P6 metrics validate digest usage     |
+
+Note: P7's open-shift notifications are NEW nurse-portal surface — today
+open shifts are manager-side only (the system ranks candidates, the DON
+contacts the nurse; nurses neither see nor claim open shifts in `/my`).
+Keep the manager-in-command philosophy: notify + express interest, never
+self-assign.
+
 ## 8. Cost picture (monthly, pre-revenue)
 
 Railway two services + volumes ~$10–25 · Cloudflare R2 backup storage ~$0–5 ·
