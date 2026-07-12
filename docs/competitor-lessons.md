@@ -137,3 +137,42 @@ close third. Solver upgrades (OPTIMUS / CP-SAT spike) are a separate axis
 from the agentic layer — do not conflate them. Core thesis: agentic AI is
 not a moat; it is LLM glue around the same math all three products run.
 Workflow fit for a 25-bed hospital is the moat.
+
+## Service-model lessons (from "The Claude Agent Playbook", X/@yurshevv, 2026-07-02)
+
+Generic agent-business playbook; most of it validates choices we already
+made (narrow niche, outcome-not-AI pitch, retainer pricing, demo-not-deck,
+running our own ops with agents). Four ideas worth adopting for SERVICE mode:
+
+1. **Make the retainer legible — ADOPT AT NEXT PRICING-PAGE TOUCH.**
+   Their sharpest line: a retainer should visibly bundle three things —
+   (a) the system running, (b) monitoring + failure response with someone
+   accountable, (c) a monthly allotment of changes/tweaks. Our flat monthly
+   fee ($1,000/$1,500 by roster size) currently names a price, not what the
+   month BUYS. Itemizing it ("your schedules generated and maintained +
+   monitored + rule changes included") converts "why do we still pay?" into
+   a checklist the administrator can defend at renewal.
+
+2. **Proof-of-work reporting — FOLD INTO STICKINESS PHASE A.**
+   "An agent nobody's watching is a liability... even a simple daily-log
+   email." For service mode this means a periodic "what we did for you"
+   summary (schedules updated, callouts resolved, rules tuned). Invisible
+   service labor is unrenewable service labor. Merges with the DON weekly
+   digest / admin monthly report already specced (production spec §7.1 P6)
+   — add the service-labor line-items to those same surfaces, not a new one.
+
+3. **Explicit escalation protocol — ADD TO TRUST PACK / SERVICE PAGES.**
+   "Clients forgive edge cases; they don't forgive silent failures." State
+   plainly: what happens when something breaks — who is contacted, through
+   what channel, how fast. CAH DONs live in escalation culture (callout
+   chains ARE escalation protocols); they will recognize and trust the
+   shape. Cheap credibility no competitor states either.
+
+4. **Discovery-call language — FOUNDER SALES NOTE.**
+   Never ask "do you want AI"; ask "what's the task you dread every
+   Monday." Also: product-mode buyers who struggle with configuration are
+   the warmest service-mode upgrade leads — treat the $10/user tier as a
+   funnel, not just a SKU.
+
+Ignored deliberately: template marketplace (Method 2), charm pricing
+($27-style — wrong register for hospital B2B), 30-day-hustle framing.
