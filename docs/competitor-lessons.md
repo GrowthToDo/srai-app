@@ -176,3 +176,26 @@ running our own ops with agents). Four ideas worth adopting for SERVICE mode:
 
 Ignored deliberately: template marketplace (Method 2), charm pricing
 ($27-style — wrong register for hospital B2B), 30-day-hustle framing.
+
+### YouShift update (Playwright-rendered site, 2026-07-12)
+
+The previously-unfetchable SPA finally read. Three strategic updates:
+
+1. **They now offer a managed-service mode** — site verbatim: "if needed,
+   our team manages your scheduling end-to-end, removing the administrative
+   burden." Convergence on our service angle from the software side. Their
+   version is an enterprise add-on ("hundreds to thousands of clinicians");
+   ours is the product FOR a 20-60-nurse CAH. Lane still ours, but the
+   "someone runs it for you" pitch is no longer unique — sharpen our version
+   with retainer legibility + proof-of-work reporting (see service-model
+   lessons above) before it matters.
+2. **Their agentic layer is early-access, not shipped** — FAQ verbatim:
+   "currently in early access... rolling out broadly in upcoming releases."
+   Confirms the earlier assessment: the agentic AI is being built now.
+3. **The points system is gone from their current site** — was the one
+   concrete fairness mechanism in 2024 press; treat as legacy. Their current
+   fairness language is generic ("workload equity... fairness across every
+   scheduling cycle").
+
+Threat level stays LOW-WATCH (enterprise physician lane), but the
+managed-service convergence is the specific thing to re-check quarterly.
