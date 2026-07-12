@@ -274,15 +274,41 @@ work goes to named subagents. This holds for any main-session model.
 1. Read `docs/ARCHITECTURE.md` (system map) and `docs/KNOWN-TRAPS.md`.
 2. `git log --oneline -10` for recent movement.
 3. Check `scripts/tsc-baseline.json` for the current type-error baseline.
+4. Note your own model tier and route work per the tier ladder below.
+
+### Model tier ladder (resolve at session start, never hard-code)
+
+Roles are defined by capability NEED; fill each role with the best model the
+harness offers THAT DAY. When tiers appear or disappear (e.g. Fable), only
+the top of the ladder changes — nothing else in this system moves.
+
+| Role                                                    | Fill with (best available, top first)                                                                                                              | Effort                |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Judgment: architecture, hardest debugging, final review | `judgment-child` (Fable) → `deep-reasoner` (Opus) → main session                                                                                   | high/xhigh, sparingly |
+| Orchestration (main session, day-to-day)                | Opus — or higher when the session runs one                                                                                                         | default               |
+| Mechanical execution                                    | `fast-worker` (Sonnet — the FLOOR; never Haiku: on this repo cheaper models take more turns, break worker contracts, and cost more than they save) | default               |
+| Verification                                            | `verifier` (Sonnet) + the mechanical scripts — tier-INDEPENDENT by design                                                                          | default               |
+
+- **Escalate up, don't grind.** The main session does not have to be the top
+  model. For a decision above your tier (architecture trade-off, gnarly root
+  cause, high-stakes review): spawn the highest judgment agent available —
+  one question in, concise conclusion out — instead of burning your own turns
+  on it. Try `judgment-child` first; if the spawn fails, that tier doesn't
+  exist today — fall back to `deep-reasoner`, then to reasoning in-session
+  with extra verification.
+- **The gates are tier-insurance.** The weaker the available models, the MORE
+  the mechanical layer matters (verify gate, ground-truth, verifier). Never
+  weaken a gate because the models got better; never skip one because they
+  got worse.
 
 ### Spawn matrix
 
-| Work                                                   | Who                                                         |
-| ------------------------------------------------------ | ----------------------------------------------------------- |
-| Architecture, root-cause debugging, high-stakes review | Main session reasons directly                               |
-| Second opinion on a high-stakes call                   | `deep-reasoner` agent, in parallel; synthesize both answers |
-| Boilerplate, tests, formatting, well-specified edits   | `fast-worker` agent (precise spec, no judgment calls)       |
-| Checking any subagent's claim                          | `verifier` agent, or `npm run ground-truth` + read the diff |
+| Work                                                   | Who                                                                                  |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Architecture, root-cause debugging, high-stakes review | Main session if at/above Opus; otherwise escalate up (see ladder)                    |
+| Second opinion / the hardest single calls              | `judgment-child` if available, else `deep-reasoner`; synthesize with your own answer |
+| Boilerplate, tests, formatting, well-specified edits   | `fast-worker` agent (precise spec, no judgment calls)                                |
+| Checking any subagent's claim                          | `verifier` agent, or `npm run ground-truth` + read the diff                          |
 
 ### Iron rules
 

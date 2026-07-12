@@ -47,3 +47,16 @@ decisions get appended in the same session they are made (CLAUDE.md rule).
   (public/sample-hospital-data.xlsx, served by GET /api/import when the DB is
   empty) is the tester's starting file. Supersedes the furnished-showroom
   reset.
+- **2026-07-06 — Model tier ladder replaces fixed model roles.** Roles are
+  defined by capability need and resolved against whatever tiers the harness
+  offers that day: judgment = judgment-child (Fable) -> deep-reasoner (Opus)
+  -> main session; workers = Sonnet floor (never Haiku — more turns, broken
+  contracts, net costlier here); verification = tier-independent scripts.
+  Spawn-attempt-as-detection: if judgment-child fails to spawn, that tier is
+  absent — fall down the ladder. Chosen the day before Fable access ends so
+  Fable's return (or any new top tier) requires zero system changes. Also
+  adopted from the community "routing block" pattern: escalate-up rule (a
+  lower-tier main session hands calls above its tier to the highest judgment
+  agent instead of grinding) and effort pinning (judgment high/xhigh
+  sparingly). Gates never scale down with model quality — they are
+  tier-insurance.
