@@ -199,3 +199,32 @@ The previously-unfetchable SPA finally read. Three strategic updates:
 
 Threat level stays LOW-WATCH (enterprise physician lane), but the
 managed-service convergence is the specific thing to re-check quarterly.
+
+## Product backlog — flex-home / low-census workflow (raised 2026-08-11)
+
+The gap the capability inventory flags: the software detects overstaffing and
+SUGGESTS who to flex, but nothing executes a send-home. In service mode our
+team does it manually (a valid service capability); in product mode it is not
+claimable until this ships.
+
+**It is ~80% built already.** Existing scaffolding — do NOT rebuild:
+
+- `unit.lowCensusOrder` — per-unit send-home order (stored, displayed on the
+  unit card, no form control to edit it)
+- `staff.voluntaryFlexAvailable` — per-nurse VTO flag (stored, editable)
+- `staff.flexHoursYearToDate` — counter (stored, never incremented)
+- `flex_home` — already a valid `exception_log` action enum value
+- `src/components/schedule/assignment-dialog.tsx` — already suggests who to flex
+- dashboard `overstaffedShifts` + advisory copy ("consider flex-home or VTO")
+- `src/lib/audit/staffing-context.ts` — `describeStaffing()` already produces the
+  "N over requirement — excess staff" line used by census + removal audit entries
+
+**What is missing (~1 day):** one action that (a) marks the assignment flexed,
+(b) increments `flexHoursYearToDate`, (c) emits the `flex_home` audit action
+with the staffing note, (d) notifies the nurse. Definition of done MUST include
+the audit line — founder requirement 2026-08-11: a send-home has to be visible
+and useful to whoever reads the trail later.
+
+Fairness angle worth building in at the same time: flex-home is a cost lever
+nurses feel personally, so rotate it — surface who was flexed last and how many
+flex hours each nurse has YTD (the counter already exists for exactly this).

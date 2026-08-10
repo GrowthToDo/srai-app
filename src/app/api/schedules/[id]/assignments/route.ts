@@ -1,8 +1,17 @@
 import { db } from "@/db";
-import { assignment, schedule, shift, shiftDefinition, staff, publicHoliday, staffHolidayAssignment } from "@/db/schema";
+import {
+  assignment,
+  schedule,
+  shift,
+  shiftDefinition,
+  staff,
+  publicHoliday,
+  staffHolidayAssignment,
+} from "@/db/schema";
 import { eq, and, gte, lte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { logAuditEvent } from "@/lib/audit/logger";
+import { describeStaffing } from "@/lib/audit/staffing-context";
 import { weekBounds } from "@/lib/date/week";
 
 /**
@@ -20,7 +29,7 @@ function getLogicalHolidayName(holidayName: string): string {
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: scheduleId } = await params;
   const body = await request.json();
@@ -28,16 +37,27 @@ export async function POST(
   // A published schedule is the version of record staff were notified about.
   // Mutating it directly would desynchronize what staff saw from what the
   // system stores — require an explicit unpublish first.
-  const scheduleRecord = db.select().from(schedule).where(eq(schedule.id, scheduleId)).get();
+  const scheduleRecord = db
+    .select()
+    .from(schedule)
+    .where(eq(schedule.id, scheduleId))
+    .get();
   if (scheduleRecord?.status === "published") {
     return NextResponse.json(
-      { error: "Cannot modify assignments on a published schedule. Unpublish it first to make changes." },
-      { status: 409 }
+      {
+        error:
+          "Cannot modify assignments on a published schedule. Unpublish it first to make changes.",
+      },
+      { status: 409 },
     );
   }
 
   // Look up the shift up front — needed to compute isOvertime and for holiday tracking below
-  const shiftRecord = db.select().from(shift).where(eq(shift.id, body.shiftId)).get();
+  const shiftRecord = db
+    .select()
+    .from(shift)
+    .where(eq(shift.id, body.shiftId))
+    .get();
 
   // Compute isOvertime: sum hours already assigned to this staff member in the same
   // calendar week, then check if adding this shift would push them over 40h.
@@ -45,10 +65,15 @@ export async function POST(
   // so we always compute it here from the current DB state.
   // durationHours lives on shiftDefinition, so queries join through that table.
   let isOvertime = false;
-  let shiftDef: { durationHours: number; name: string; shiftType: string } | undefined;
+  let shiftDef:
+    { durationHours: number; name: string; shiftType: string } | undefined;
   if (shiftRecord) {
     shiftDef = db
-      .select({ durationHours: shiftDefinition.durationHours, name: shiftDefinition.name, shiftType: shiftDefinition.shiftType })
+      .select({
+        durationHours: shiftDefinition.durationHours,
+        name: shiftDefinition.name,
+        shiftType: shiftDefinition.shiftType,
+      })
       .from(shiftDefinition)
       .where(eq(shiftDefinition.id, shiftRecord.shiftDefinitionId))
       .get();
@@ -60,7 +85,10 @@ export async function POST(
       .select({ durationHours: shiftDefinition.durationHours })
       .from(assignment)
       .innerJoin(shift, eq(assignment.shiftId, shift.id))
-      .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
+      .innerJoin(
+        shiftDefinition,
+        eq(shift.shiftDefinitionId, shiftDefinition.id),
+      )
       .where(
         and(
           eq(assignment.staffId, body.staffId),
@@ -69,12 +97,15 @@ export async function POST(
           // Hours the nurse is no longer working must not count toward OT —
           // matches the filters used by swap approval and find-candidates.
           ne(assignment.status, "called_out"),
-          ne(assignment.status, "cancelled")
-        )
+          ne(assignment.status, "cancelled"),
+        ),
       )
       .all();
 
-    const weeklyHours = existingRows.reduce((sum, r) => sum + r.durationHours, 0);
+    const weeklyHours = existingRows.reduce(
+      (sum, r) => sum + r.durationHours,
+      0,
+    );
     isOvertime = weeklyHours + shiftDuration > 40;
   }
 
@@ -85,7 +116,10 @@ export async function POST(
     db.update(assignment)
       .set({ isChargeNurse: false })
       .where(
-        and(eq(assignment.shiftId, body.shiftId), eq(assignment.isChargeNurse, true))
+        and(
+          eq(assignment.shiftId, body.shiftId),
+          eq(assignment.isChargeNurse, true),
+        ),
       )
       .run();
   }
@@ -109,9 +143,18 @@ export async function POST(
     .returning()
     .get();
 
-  const staffRecord = db.select({ firstName: staff.firstName, lastName: staff.lastName, role: staff.role })
-    .from(staff).where(eq(staff.id, body.staffId)).get();
-  const staffName = staffRecord ? `${staffRecord.firstName} ${staffRecord.lastName}` : body.staffId;
+  const staffRecord = db
+    .select({
+      firstName: staff.firstName,
+      lastName: staff.lastName,
+      role: staff.role,
+    })
+    .from(staff)
+    .where(eq(staff.id, body.staffId))
+    .get();
+  const staffName = staffRecord
+    ? `${staffRecord.firstName} ${staffRecord.lastName}`
+    : body.staffId;
   const shiftLabel = shiftRecord
     ? `${shiftDef?.name ?? shiftDef?.shiftType ?? "shift"} on ${shiftRecord.date}`
     : body.shiftId;
@@ -129,7 +172,12 @@ export async function POST(
     const holidayRecord = db
       .select()
       .from(publicHoliday)
-      .where(and(eq(publicHoliday.date, shiftRecord.date), eq(publicHoliday.isActive, true)))
+      .where(
+        and(
+          eq(publicHoliday.date, shiftRecord.date),
+          eq(publicHoliday.isActive, true),
+        ),
+      )
       .get();
 
     if (holidayRecord) {
@@ -146,8 +194,8 @@ export async function POST(
           and(
             eq(staffHolidayAssignment.staffId, body.staffId),
             eq(staffHolidayAssignment.holidayName, logicalHolidayName),
-            eq(staffHolidayAssignment.year, year)
-          )
+            eq(staffHolidayAssignment.year, year),
+          ),
         )
         .get();
 
@@ -174,7 +222,10 @@ export async function DELETE(request: Request) {
   const assignmentId = searchParams.get("assignmentId");
 
   if (!assignmentId) {
-    return NextResponse.json({ error: "assignmentId required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "assignmentId required" },
+      { status: 400 },
+    );
   }
 
   const existing = db
@@ -193,27 +244,39 @@ export async function DELETE(request: Request) {
       .get();
     if (owningSchedule?.status === "published") {
       return NextResponse.json(
-        { error: "Cannot modify assignments on a published schedule. Unpublish it first to make changes." },
-        { status: 409 }
+        {
+          error:
+            "Cannot modify assignments on a published schedule. Unpublish it first to make changes.",
+        },
+        { status: 409 },
       );
     }
   }
 
   // Clean up holiday tracking if this was a holiday assignment
   if (existing) {
-    const shiftRecord = db.select().from(shift).where(eq(shift.id, existing.shiftId)).get();
+    const shiftRecord = db
+      .select()
+      .from(shift)
+      .where(eq(shift.id, existing.shiftId))
+      .get();
     if (shiftRecord) {
       const holidayRecord = db
         .select()
         .from(publicHoliday)
-        .where(and(eq(publicHoliday.date, shiftRecord.date), eq(publicHoliday.isActive, true)))
+        .where(
+          and(
+            eq(publicHoliday.date, shiftRecord.date),
+            eq(publicHoliday.isActive, true),
+          ),
+        )
         .get();
 
       if (holidayRecord) {
         const logicalHolidayName = getLogicalHolidayName(holidayRecord.name);
         // Parse year from the string: Date().getFullYear() returns the previous
-      // year for Jan 1 dates on servers west of UTC.
-      const year = parseInt(shiftRecord.date.slice(0, 4), 10);
+        // year for Jan 1 dates on servers west of UTC.
+        const year = parseInt(shiftRecord.date.slice(0, 4), 10);
 
         // Delete the holiday tracking record
         db.delete(staffHolidayAssignment)
@@ -221,8 +284,8 @@ export async function DELETE(request: Request) {
             and(
               eq(staffHolidayAssignment.staffId, existing.staffId),
               eq(staffHolidayAssignment.holidayName, logicalHolidayName),
-              eq(staffHolidayAssignment.year, year)
-            )
+              eq(staffHolidayAssignment.year, year),
+            ),
           )
           .run();
       }
@@ -232,23 +295,42 @@ export async function DELETE(request: Request) {
   db.delete(assignment).where(eq(assignment.id, assignmentId)).run();
 
   if (existing) {
-    const delStaff = db.select({ firstName: staff.firstName, lastName: staff.lastName })
-      .from(staff).where(eq(staff.id, existing.staffId)).get();
-    const delStaffName = delStaff ? `${delStaff.firstName} ${delStaff.lastName}` : existing.staffId;
-    const delShiftRecord = db.select().from(shift).where(eq(shift.id, existing.shiftId)).get();
+    const delStaff = db
+      .select({ firstName: staff.firstName, lastName: staff.lastName })
+      .from(staff)
+      .where(eq(staff.id, existing.staffId))
+      .get();
+    const delStaffName = delStaff
+      ? `${delStaff.firstName} ${delStaff.lastName}`
+      : existing.staffId;
+    const delShiftRecord = db
+      .select()
+      .from(shift)
+      .where(eq(shift.id, existing.shiftId))
+      .get();
     const delShiftDef = delShiftRecord
-      ? db.select({ name: shiftDefinition.name, shiftType: shiftDefinition.shiftType })
-          .from(shiftDefinition).where(eq(shiftDefinition.id, delShiftRecord.shiftDefinitionId)).get()
+      ? db
+          .select({
+            name: shiftDefinition.name,
+            shiftType: shiftDefinition.shiftType,
+          })
+          .from(shiftDefinition)
+          .where(eq(shiftDefinition.id, delShiftRecord.shiftDefinitionId))
+          .get()
       : null;
     const delShiftLabel = delShiftRecord
       ? `${delShiftDef?.name ?? delShiftDef?.shiftType ?? "shift"} on ${delShiftRecord.date}`
       : existing.shiftId;
 
+    // Staffing position AFTER removal, so the trail shows whether this took the
+    // shift back to requirement (e.g. a low-census release) or left it short.
+    const postRemovalStaffing = describeStaffing(existing.shiftId);
+
     logAuditEvent({
       entityType: "assignment",
       entityId: assignmentId,
       action: "deleted",
-      description: `Removed ${delStaffName} from ${delShiftLabel}`,
+      description: `Removed ${delStaffName} from ${delShiftLabel}${postRemovalStaffing}`,
       previousState: existing as unknown as Record<string, unknown>,
     });
   }

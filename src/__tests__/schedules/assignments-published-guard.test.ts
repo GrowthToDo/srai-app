@@ -45,12 +45,58 @@ vi.mock("drizzle-orm", () => ({
 
 vi.mock("@/db/schema", () => ({
   schedule: { _table: "schedule", id: "sched$id", status: "sched$status" },
-  shift: { _table: "shift", id: "shift$id", date: "shift$date", shiftDefinitionId: "shift$defId" },
-  shiftDefinition: { _table: "shiftDefinition", id: "def$id", durationHours: "def$durationHours" },
-  staff: { _table: "staff", id: "staff$id", firstName: "staff$fn", lastName: "staff$ln", role: "staff$role" },
-  publicHoliday: { _table: "publicHoliday", date: "ph$date", isActive: "ph$isActive" },
-  assignment: { _table: "assignment", id: "assign$id", staffId: "assign$staffId", shiftId: "assign$shiftId", scheduleId: "assign$scheduleId", isChargeNurse: "assign$icn", status: "assign$status" },
-  staffHolidayAssignment: { _table: "staffHolidayAssignment", staffId: "sha$staffId", holidayName: "sha$holidayName", year: "sha$year" },
+  shift: {
+    _table: "shift",
+    id: "shift$id",
+    date: "shift$date",
+    shiftDefinitionId: "shift$defId",
+  },
+  shiftDefinition: {
+    _table: "shiftDefinition",
+    id: "def$id",
+    durationHours: "def$durationHours",
+  },
+  staff: {
+    _table: "staff",
+    id: "staff$id",
+    firstName: "staff$fn",
+    lastName: "staff$ln",
+    role: "staff$role",
+  },
+  publicHoliday: {
+    _table: "publicHoliday",
+    date: "ph$date",
+    isActive: "ph$isActive",
+  },
+  assignment: {
+    _table: "assignment",
+    id: "assign$id",
+    staffId: "assign$staffId",
+    shiftId: "assign$shiftId",
+    scheduleId: "assign$scheduleId",
+    isChargeNurse: "assign$icn",
+    status: "assign$status",
+  },
+  staffHolidayAssignment: {
+    _table: "staffHolidayAssignment",
+    staffId: "sha$staffId",
+    holidayName: "sha$holidayName",
+    year: "sha$year",
+  },
+  // Needed since the DELETE handler appends a staffing summary to its audit
+  // entry (src/lib/audit/staffing-context.ts reads census bands to compute the
+  // effective requirement). This test stubs describeStaffing below, but the
+  // module still resolves schema symbols at import time.
+  censusBand: { _table: "censusBand", id: "cb$id", isActive: "cb$isActive" },
+}));
+
+// The staffing summary is covered by its own test
+// (src/__tests__/audit/staffing-context.test.ts) against a real scratch DB;
+// here it would need every census/assignment row mocked to produce a string
+// this test never asserts on. Stub it so this stays a guard test.
+vi.mock("@/lib/audit/staffing-context", () => ({
+  describeStaffing: () => "",
+  getStaffingSnapshot: () => null,
 }));
 
 vi.mock("@/db", () => {
@@ -75,7 +121,9 @@ vi.mock("@/db", () => {
           run: vi.fn(),
         }),
       }),
-      update: () => ({ set: () => ({ where: () => ({ run: mockUpdateRun }) }) }),
+      update: () => ({
+        set: () => ({ where: () => ({ run: mockUpdateRun }) }),
+      }),
       delete: () => ({ where: () => ({ run: mockDeleteRun }) }),
     },
   };
@@ -92,17 +140,20 @@ import { POST, DELETE } from "@/app/api/schedules/[id]/assignments/route";
 const SCHEDULE_ID = "sched-001";
 
 function makePost(body: Record<string, unknown>) {
-  return new Request(`http://localhost/api/schedules/${SCHEDULE_ID}/assignments`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return new Request(
+    `http://localhost/api/schedules/${SCHEDULE_ID}/assignments`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 function makeDelete(assignmentId: string) {
   return new Request(
     `http://localhost/api/schedules/${SCHEDULE_ID}/assignments?assignmentId=${assignmentId}`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
 }
 
@@ -113,9 +164,21 @@ function makeParams() {
 describe("assignments route — published-schedule guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    tableGets.shift.mockReturnValue({ id: "shift-001", date: "2026-04-01", shiftDefinitionId: "def-001" });
-    tableGets.shiftDefinition.mockReturnValue({ durationHours: 12, name: "Day", shiftType: "day" });
-    tableGets.staff.mockReturnValue({ firstName: "Jane", lastName: "Doe", role: "RN" });
+    tableGets.shift.mockReturnValue({
+      id: "shift-001",
+      date: "2026-04-01",
+      shiftDefinitionId: "def-001",
+    });
+    tableGets.shiftDefinition.mockReturnValue({
+      durationHours: 12,
+      name: "Day",
+      shiftType: "day",
+    });
+    tableGets.staff.mockReturnValue({
+      firstName: "Jane",
+      lastName: "Doe",
+      role: "RN",
+    });
     tableGets.publicHoliday.mockReturnValue(undefined);
     tableGets.assignment.mockReturnValue({
       id: "assign-001",
@@ -127,24 +190,36 @@ describe("assignments route — published-schedule guard", () => {
   });
 
   it("POST returns 409 when the schedule is published", async () => {
-    tableGets.schedule.mockReturnValue({ id: SCHEDULE_ID, status: "published" });
-    const res = await POST(makePost({ shiftId: "shift-001", staffId: "staff-001" }), {
-      params: makeParams(),
+    tableGets.schedule.mockReturnValue({
+      id: SCHEDULE_ID,
+      status: "published",
     });
+    const res = await POST(
+      makePost({ shiftId: "shift-001", staffId: "staff-001" }),
+      {
+        params: makeParams(),
+      },
+    );
     expect((res as { status: number }).status).toBe(409);
     expect(mockInsertReturningGet).not.toHaveBeenCalled();
   });
 
   it("POST still creates the assignment on a draft schedule", async () => {
     tableGets.schedule.mockReturnValue({ id: SCHEDULE_ID, status: "draft" });
-    const res = await POST(makePost({ shiftId: "shift-001", staffId: "staff-001" }), {
-      params: makeParams(),
-    });
+    const res = await POST(
+      makePost({ shiftId: "shift-001", staffId: "staff-001" }),
+      {
+        params: makeParams(),
+      },
+    );
     expect((res as { status: number }).status).toBe(201);
   });
 
   it("DELETE returns 409 when the assignment's schedule is published", async () => {
-    tableGets.schedule.mockReturnValue({ id: SCHEDULE_ID, status: "published" });
+    tableGets.schedule.mockReturnValue({
+      id: SCHEDULE_ID,
+      status: "published",
+    });
     const res = await DELETE(makeDelete("assign-001"));
     expect((res as { status: number }).status).toBe(409);
     expect(mockDeleteRun).not.toHaveBeenCalled();
