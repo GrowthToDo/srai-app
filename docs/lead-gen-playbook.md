@@ -107,3 +107,15 @@ Search APIs (universe is known), list brokers, Apollo/ZoomInfo seats,
 sequence tools, paid ads, conference sponsorships (attend cheap TORCH
 events; don't sponsor yet). Revisit paid anything only when the free
 pipeline is saturated — at 85 accounts, it won't be soon.
+
+## Founder sales note — rehearse before the first real call (2026-08-16)
+
+Adopted from Blomfield's "simulating investor calls" (YC Startup School
+Paris): before dialing the first administrator from the ranked list, run
+2-3 practice calls against an AI playing a skeptical 25-bed-CAH DON — 20
+years of paper schedules, burned once by an enterprise WFM rollout,
+allergic to the word "AI", protective of her nurses. Build the opponent
+from leads/ICP.md + the objection notes in ops/conversations/. Practice
+the discovery question ("what's the task you dread every Monday?"), the
+price answer, and the "what if it makes a bad schedule" answer. The first
+real call should be rep #4, not rep #1.

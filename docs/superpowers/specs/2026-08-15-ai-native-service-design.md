@@ -259,7 +259,9 @@ P4 runbook precede hospital #1; P2 file-per-tenant gated on hospital #2).
 **Now (pre-customer, cheap, time-sensitive):**
 
 - Create `ops/service-log.csv` + gitignore entry; start logging any real
-  service-like work immediately (practice the habit)
+  service-like work immediately (practice the habit) — DONE 2026-08-16
+- Conversation artifacts (§11a): every prospect/DON interaction leaves a
+  2-minute note in `ops/conversations/` within a day — DIR CREATED 2026-08-16
 - Data clause → engagement-letter template (P4); flag for lawyer review
 - Proof-of-work report template (one page; §5d line items)
 - Consent artifact + nurse-channel expectations → P4 runbook
@@ -322,3 +324,66 @@ forces it, is a DELIVERY person (service ops), not sales — sales stays
 founder-led while credibility is the constraint. Clinical advisor (in
 progress) covers the domain-credibility gap alongside customer #1's DON
 becoming the reference.
+
+## 11. Company-brain addendum (Blomfield / YC Startup School Paris, adopted 2026-08-16)
+
+Source: "Building And Structuring An AI Native Company" (Tom Blomfield, YC —
+youtu.be/Z3JyAqh4ixg). His five-layer loop (sensors → policy → tools →
+quality gates → learning, humans at the edge) matches what §§4-6 already
+build INTO THE SERVICE. This addendum applies the same layers to
+SSAI-the-company. Two adopted practices, two notes.
+
+### 11a. Conversation artifacts — close the sensor gap (ADOPTED, starts now)
+
+The repos already are the company brain: dossiers, runbooks, DECISIONS.md,
+KNOWN-TRAPS, memory — all agent-legible, and the reason delivery agents
+compound instead of restarting. The un-instrumented sensor is the founder's
+VOICE interactions: prospect calls, DON conversations, emails — today they
+evaporate.
+
+Ritual: within a day of any hospital/prospect interaction, a 2-minute note
+lands in the scheduler repo at `ops/conversations/YYYY-MM-DD-<who>.md`
+(gitignored path, same treatment as `leads/` — real names stay out of the
+public repo). Capture: who, what they objected to, the exact phrases they
+used for their pain, what confused them, what they asked that we couldn't
+answer. Agents then fold these into: the objection library (lead-gen
+playbook), the website FAQ, the P4 runbook, and the facts dossier — the
+"office hours → living user manual" pattern. An unanswerable question
+appearing twice = a runbook or FAQ entry by default.
+
+### 11b. The founder-gate trust dial (ADOPTED, activates with hospital #1)
+
+The DON gets a confirm-each → auto-within-policy dial (§5b); the founder's
+own draft-check gets the same dial, pointed inward. Driven by the
+post-generation edit rate (§4b Loop 2), per hospital:
+
+- **Full check** (default): every draft reviewed before delivery.
+- **Spot check**: edit rate below ~5 edits/100 assignments for 2 consecutive
+  periods → review one draft per period in depth + scan the others'
+  rule-violation and understaffed counts only.
+- **Anomaly-triggered**: additionally, ANY of these always force a full
+  review regardless of tier — new rule config change that period, census
+  band changes, first period after onboarding, understaffed count > 0, or a
+  DON complaint.
+
+The gate earns its way down per hospital on evidence, exactly like the
+customer-facing dial — it never disappears, it narrows. This is the
+principled `schedule_check` FMH reducer the spec previously lacked. Log tier
+changes in DECISIONS.md.
+
+### 11c. Notes (recorded, not yet operationalized)
+
+- **Token-before-headcount test** (amends §7): when a tripwire fires, the
+  fix is agents + runbook FIRST; a hire is the last resort after an
+  automation attempt demonstrably failed, never the reflex. And amending §3:
+  infra/AI COGS RISING while labor COGS falls is the AINS signature working
+  as intended — "if your API bill doesn't make you uncomfortable, you're not
+  doing enough" (Blomfield). Do not misread a growing token bill as waste;
+  read it against FMH falling.
+- **Sales-call simulation** (cross-ref: docs/lead-gen-playbook.md Phase 5):
+  before the first real administrator call, rehearse against an AI playing a
+  skeptical CAH DON built from the ICP + objection library. The first real
+  call should not be the first rep.
+- **Explicitly NOT adopted:** the 80%-leaner-headcount framing as public
+  message. Hospitals hear "AI replaces staff" as a threat; our calibrated
+  positioning ("your nurses never have to learn a new app") stays.

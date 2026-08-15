@@ -52,3 +52,7 @@ next-env.d.ts
 
 scripts/.verify-state.json
 leads/
+
+# Founder ops artifacts: service-labor log + conversation notes (real names,
+# real hospitals — never in the public repo; same treatment as leads/)
+ops/
