@@ -3,7 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { CalendarPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { InfoTip, TERM_HELP } from "@/components/ui/info-tip";
 import { RecordAvailabilityDialog } from "@/components/prn-availability/record-availability-dialog";
@@ -15,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface PRNAvailability {
   id: string;
@@ -39,6 +46,7 @@ export default function AvailabilityPage() {
   const [availability, setAvailability] = useState<PRNAvailability[]>([]);
   const [prnStaff, setPrnStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Record-availability dialog state (the shared dialog owns the form).
   const [open, setOpen] = useState(false);
@@ -47,15 +55,22 @@ export default function AvailabilityPage() {
   >(undefined);
 
   const fetchData = useCallback(async () => {
-    const [availRes, staffRes] = await Promise.all([
-      fetch("/api/prn-availability"),
-      fetch("/api/staff"),
-    ]);
-    const availData = await availRes.json();
-    const staffData = await staffRes.json();
-    setAvailability(availData);
-    setPrnStaff(staffData.filter((s: StaffMember) => s.employmentType === "per_diem"));
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [availData, staffData] = await Promise.all([
+        fetchJson<PRNAvailability[]>("/api/prn-availability"),
+        fetchJson<StaffMember[]>("/api/staff"),
+      ]);
+      setAvailability(availData);
+      setPrnStaff(staffData.filter((s) => s.employmentType === "per_diem"));
+    } catch {
+      setLoadError(
+        "Couldn't load availability. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -63,8 +78,10 @@ export default function AvailabilityPage() {
   }, [fetchData]);
 
   // Find PRN staff who haven't submitted
-  const submittedStaffIds = new Set(availability.map(a => a.staffId));
-  const missingSubmissions = prnStaff.filter(s => !submittedStaffIds.has(s.id));
+  const submittedStaffIds = new Set(availability.map((a) => a.staffId));
+  const missingSubmissions = prnStaff.filter(
+    (s) => !submittedStaffIds.has(s.id),
+  );
 
   // Open the dialog, optionally pre-selecting a nurse (from a Missing banner
   // chip). The dialog pre-loads any availability they already have on file.
@@ -96,14 +113,16 @@ export default function AvailabilityPage() {
       {missingSubmissions.length > 0 && (
         <Card className="mb-6 border-yellow-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg text-yellow-600">Missing Submissions</CardTitle>
+            <CardTitle className="text-lg text-yellow-600">
+              Missing Submissions
+            </CardTitle>
             <CardDescription>
               The following PRN staff have not submitted their availability
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {missingSubmissions.map(s => (
+              {missingSubmissions.map((s) => (
                 <Button
                   key={s.id}
                   variant="outline"
@@ -126,8 +145,17 @@ export default function AvailabilityPage() {
         <CardContent>
           {loading ? (
             <p className="text-muted-foreground">Loading...</p>
+          ) : loadError ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-destructive">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={fetchData}>
+                Try again
+              </Button>
+            </div>
           ) : availability.length === 0 ? (
-            <p className="text-muted-foreground">No availability submissions yet.</p>
+            <p className="text-muted-foreground">
+              No availability submissions yet.
+            </p>
           ) : (
             <Table>
               <TableHeader>
@@ -155,9 +183,13 @@ export default function AvailabilityPage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate">{avail.notes || "—"}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">
+                      {avail.notes || "—"}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {avail.submittedAt ? new Date(avail.submittedAt).toLocaleDateString() : "—"}
+                      {avail.submittedAt
+                        ? new Date(avail.submittedAt).toLocaleDateString()
+                        : "—"}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -189,7 +221,11 @@ export default function AvailabilityPage() {
                         variant={isWeekend ? "default" : "outline"}
                         className="text-xs"
                       >
-                        {d.toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" })}
+                        {d.toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          weekday: "short",
+                        })}
                       </Badge>
                     );
                   })}

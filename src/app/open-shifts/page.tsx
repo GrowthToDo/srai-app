@@ -3,7 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -24,8 +30,12 @@ import { format, parseISO } from "date-fns";
 import { EntityHistoryDialog } from "@/components/ui/entity-history-dialog";
 import { GuideNudge } from "@/components/ui/guide-nudge";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
-import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import {
+  isPracticeText,
+  stripPracticeMarker,
+} from "@/lib/onboarding/practice-marker";
 import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface CandidateRecommendation {
   staffId: string;
@@ -50,7 +60,8 @@ interface CoverageRequestData {
   originalStaffId: string;
   reason: string;
   reasonDetail: string | null;
-  status: "pending_approval" | "approved" | "filled" | "cancelled" | "no_candidates";
+  status:
+    "pending_approval" | "approved" | "filled" | "cancelled" | "no_candidates";
   priority: "low" | "normal" | "high" | "urgent";
   recommendations: CandidateRecommendation[];
   escalationStepsChecked: string[];
@@ -73,14 +84,20 @@ interface CoverageRequestData {
   originalWasChargeNurse?: boolean | null;
 }
 
-const PRIORITY_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+const PRIORITY_VARIANTS: Record<
+  string,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
   low: "secondary",
   normal: "outline",
   high: "default",
   urgent: "destructive",
 };
 
-const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+const STATUS_VARIANTS: Record<
+  string,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
   pending_approval: "default",
   approved: "secondary",
   filled: "secondary",
@@ -131,9 +148,13 @@ export default function CoverageRequestsPage() {
     (generatedOpenShiftId !== null && req.id === generatedOpenShiftId);
   const [requests, setRequests] = useState<CoverageRequestData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<CoverageRequestData | null>(null);
-  const [filter, setFilter] = useState<"pending_approval" | "filled" | "cancelled" | "all">("pending_approval");
+  const [selectedRequest, setSelectedRequest] =
+    useState<CoverageRequestData | null>(null);
+  const [filter, setFilter] = useState<
+    "pending_approval" | "filled" | "cancelled" | "all"
+  >("pending_approval");
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [cancelTargetIsLeave, setCancelTargetIsLeave] = useState(false);
@@ -141,7 +162,9 @@ export default function CoverageRequestsPage() {
 
   // Guard: acting on a REAL open shift while the tutorial is active asks first.
   const [confirmRealOpen, setConfirmRealOpen] = useState(false);
-  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
+  const [pendingRealAction, setPendingRealAction] = useState<
+    (() => void) | null
+  >(null);
 
   // While practice is active, acting on a NON-practice (real) row confirms first.
   function guardRealAction(req: CoverageRequestData, act: () => void) {
@@ -154,10 +177,17 @@ export default function CoverageRequestsPage() {
   }
 
   const fetchData = useCallback(async () => {
-    const res = await fetch("/api/open-shifts");
-    const data = await res.json();
-    setRequests(data);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setRequests(await fetchJson<CoverageRequestData[]>("/api/open-shifts"));
+    } catch {
+      setLoadError(
+        "Couldn't load coverage requests. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -183,9 +213,15 @@ export default function CoverageRequestsPage() {
 
     setApproveDialogOpen(false);
     if (res.ok) {
-      const candidate = selectedRequest.recommendations.find((r) => r.staffId === candidateStaffId);
+      const candidate = selectedRequest.recommendations.find(
+        (r) => r.staffId === candidateStaffId,
+      );
       const name = candidate?.staffName ?? "Staff member";
-      addToast({ title: "Coverage assigned", description: `${name} — ${format(parseISO(selectedRequest.shiftDate), "MMM d, yyyy")}`, variant: "success" });
+      addToast({
+        title: "Coverage assigned",
+        description: `${name} — ${format(parseISO(selectedRequest.shiftDate), "MMM d, yyyy")}`,
+        variant: "success",
+      });
     } else {
       addToast({ title: "Failed to assign coverage", variant: "error" });
     }
@@ -197,7 +233,9 @@ export default function CoverageRequestsPage() {
   function handleCancelClick(req: CoverageRequestData) {
     setCancelTargetId(req.id);
     setCancelTargetIsLeave(req.reason === "leave_approved");
-    setCancelTargetStaffName(`${req.originalStaffFirstName} ${req.originalStaffLastName}`);
+    setCancelTargetStaffName(
+      `${req.originalStaffFirstName} ${req.originalStaffLastName}`,
+    );
     setCancelDialogOpen(true);
   }
 
@@ -211,7 +249,13 @@ export default function CoverageRequestsPage() {
     setCancelDialogOpen(false);
     setCancelTargetId(null);
     if (res.ok) {
-      addToast({ title: "Open shift cancelled", description: cancelTargetStaffName ? `Coverage request for ${cancelTargetStaffName}` : undefined, variant: "warning" });
+      addToast({
+        title: "Open shift cancelled",
+        description: cancelTargetStaffName
+          ? `Coverage request for ${cancelTargetStaffName}`
+          : undefined,
+        variant: "warning",
+      });
     } else {
       addToast({ title: "Failed to cancel open shift", variant: "error" });
     }
@@ -221,11 +265,14 @@ export default function CoverageRequestsPage() {
 
   const filteredRequests = requests.filter((r) => {
     if (filter === "all") return true;
-    if (filter === "pending_approval") return r.status === "pending_approval" || r.status === "no_candidates";
+    if (filter === "pending_approval")
+      return r.status === "pending_approval" || r.status === "no_candidates";
     return r.status === filter;
   });
 
-  const pendingCount = requests.filter((r) => r.status === "pending_approval" || r.status === "no_candidates").length;
+  const pendingCount = requests.filter(
+    (r) => r.status === "pending_approval" || r.status === "no_candidates",
+  ).length;
 
   return (
     <div>
@@ -233,7 +280,8 @@ export default function CoverageRequestsPage() {
         <div>
           <h1 className="text-2xl font-bold">Coverage Requests</h1>
           <p className="mt-1 text-muted-foreground">
-            {pendingCount} request{pendingCount !== 1 ? "s" : ""} pending approval
+            {pendingCount} request{pendingCount !== 1 ? "s" : ""} pending
+            approval
           </p>
         </div>
       </div>
@@ -242,41 +290,72 @@ export default function CoverageRequestsPage() {
 
       {/* Filter tabs */}
       <div className="mb-4 flex gap-2">
-        {(["pending_approval", "filled", "cancelled", "all"] as const).map((status) => (
-          <Button
-            key={status}
-            variant={filter === status ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter(status)}
-          >
-            {status === "pending_approval" ? "Pending" : status.charAt(0).toUpperCase() + status.slice(1)}
-            {status === "pending_approval" && pendingCount > 0 && (
-              <Badge variant="secondary" className="ml-2">
-                {pendingCount}
-              </Badge>
-            )}
-          </Button>
-        ))}
+        {(["pending_approval", "filled", "cancelled", "all"] as const).map(
+          (status) => (
+            <Button
+              key={status}
+              variant={filter === status ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilter(status)}
+            >
+              {status === "pending_approval"
+                ? "Pending"
+                : status.charAt(0).toUpperCase() + status.slice(1)}
+              {status === "pending_approval" && pendingCount > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {pendingCount}
+                </Badge>
+              )}
+            </Button>
+          ),
+        )}
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Coverage Recommendations</CardTitle>
           <CardDescription>
-            Review and approve replacement candidates for shifts needing coverage
+            Review and approve replacement candidates for shifts needing
+            coverage
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <p className="text-muted-foreground">Loading...</p>
+          ) : loadError ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-destructive">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={fetchData}>
+                Try again
+              </Button>
+            </div>
           ) : filteredRequests.length === 0 ? (
             <div className="rounded-lg border-2 border-dashed border-muted p-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-                  <path d="M8 2v4"/><path d="M16 2v4"/><path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8"/><path d="M3 10h18"/><path d="M16 19h6"/><path d="M19 16v6"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-muted-foreground"
+                >
+                  <path d="M8 2v4" />
+                  <path d="M16 2v4" />
+                  <path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" />
+                  <path d="M3 10h18" />
+                  <path d="M16 19h6" />
+                  <path d="M19 16v6" />
                 </svg>
               </div>
-              <p className="font-medium">No {filter !== "all" ? filter.replace("_", " ") : ""} coverage requests</p>
+              <p className="font-medium">
+                No {filter !== "all" ? filter.replace("_", " ") : ""} coverage
+                requests
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {filter === "all" || filter === "pending_approval"
                   ? "Coverage requests appear here when you need staff beyond the schedule — including leave approved more than 7 days out."
@@ -304,13 +383,19 @@ export default function CoverageRequestsPage() {
                   return (
                     <TableRow
                       key={req.id}
-                      className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
+                      className={
+                        isPractice
+                          ? "bg-amber-50 dark:bg-amber-950/20"
+                          : undefined
+                      }
                     >
                       <TableCell className="font-medium">
                         <span className="inline-flex items-center gap-2">
                           {format(parseISO(req.shiftDate), "EEE, MMM d")}
                           {isPractice && (
-                            <Badge variant="default" className="text-xs">Practice</Badge>
+                            <Badge variant="default" className="text-xs">
+                              Practice
+                            </Badge>
                           )}
                         </span>
                       </TableCell>
@@ -328,8 +413,12 @@ export default function CoverageRequestsPage() {
                         {topCandidate ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">{topCandidate.staffName}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded ${SOURCE_COLORS[topCandidate.source]}`}>
+                              <span className="font-medium">
+                                {topCandidate.staffName}
+                              </span>
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded ${SOURCE_COLORS[topCandidate.source]}`}
+                              >
                                 {SOURCE_LABELS[topCandidate.source]}
                               </span>
                             </div>
@@ -338,7 +427,9 @@ export default function CoverageRequestsPage() {
                             </div>
                           </div>
                         ) : (
-                          <span className="text-muted-foreground italic">No candidates found</span>
+                          <span className="text-muted-foreground italic">
+                            No candidates found
+                          </span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -349,24 +440,31 @@ export default function CoverageRequestsPage() {
                       <TableCell>
                         <div className="space-y-0.5">
                           <Badge variant={STATUS_VARIANTS[req.status]}>
-                            {req.status === "cancelled" && req.reason === "leave_approved"
+                            {req.status === "cancelled" &&
+                            req.reason === "leave_approved"
                               ? "Coverage Waived"
                               : STATUS_LABELS[req.status]}
                           </Badge>
-                          {req.status === "cancelled" && req.reason === "leave_approved" && (
-                            <p className="text-xs text-muted-foreground">
-                              Staff still on leave
-                            </p>
-                          )}
+                          {req.status === "cancelled" &&
+                            req.reason === "leave_approved" && (
+                              <p className="text-xs text-muted-foreground">
+                                Staff still on leave
+                              </p>
+                            )}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 items-center">
-                          {(req.status === "pending_approval" || req.status === "no_candidates") && (
+                          {(req.status === "pending_approval" ||
+                            req.status === "no_candidates") && (
                             <>
                               <Button
                                 size="sm"
-                                onClick={() => guardRealAction(req, () => handleApproveClick(req))}
+                                onClick={() =>
+                                  guardRealAction(req, () =>
+                                    handleApproveClick(req),
+                                  )
+                                }
                                 disabled={!req.recommendations?.length}
                               >
                                 Review
@@ -374,7 +472,11 @@ export default function CoverageRequestsPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => guardRealAction(req, () => handleCancelClick(req))}
+                                onClick={() =>
+                                  guardRealAction(req, () =>
+                                    handleCancelClick(req),
+                                  )
+                                }
                               >
                                 Cancel
                               </Button>
@@ -408,11 +510,16 @@ export default function CoverageRequestsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setCancelDialogOpen(false)}
+            >
               Go Back
             </Button>
             <Button variant="destructive" onClick={handleCancelConfirm}>
-              {cancelTargetIsLeave ? "Cancel Coverage (Leave Stays Approved)" : "Cancel Coverage Request"}
+              {cancelTargetIsLeave
+                ? "Cancel Coverage (Leave Stays Approved)"
+                : "Cancel Coverage Request"}
             </Button>
           </div>
         </DialogContent>
@@ -433,36 +540,53 @@ export default function CoverageRequestsPage() {
               <div className="rounded-lg border p-3 text-sm bg-muted/50">
                 <p>
                   <strong>Date:</strong>{" "}
-                  {format(parseISO(selectedRequest.shiftDate), "EEEE, MMMM d, yyyy")}
+                  {format(
+                    parseISO(selectedRequest.shiftDate),
+                    "EEEE, MMMM d, yyyy",
+                  )}
                 </p>
                 <p>
-                  <strong>Shift:</strong> {selectedRequest.shiftName} ({selectedRequest.startTime} - {selectedRequest.endTime})
+                  <strong>Shift:</strong> {selectedRequest.shiftName} (
+                  {selectedRequest.startTime} - {selectedRequest.endTime})
                 </p>
                 <p>
                   <strong>Unit:</strong> {selectedRequest.unit}
                 </p>
                 <p>
-                  <strong>Original Staff:</strong> {selectedRequest.originalStaffFirstName} {selectedRequest.originalStaffLastName}
+                  <strong>Original Staff:</strong>{" "}
+                  {selectedRequest.originalStaffFirstName}{" "}
+                  {selectedRequest.originalStaffLastName}
                 </p>
                 <p>
-                  <strong>Reason:</strong> {stripPracticeMarker(selectedRequest.reasonDetail) || selectedRequest.reason}
+                  <strong>Reason:</strong>{" "}
+                  {stripPracticeMarker(selectedRequest.reasonDetail) ||
+                    selectedRequest.reason}
                 </p>
               </div>
 
               {/* Escalation Steps */}
               <div className="text-sm text-muted-foreground">
-                <strong>Checked:</strong> {selectedRequest.escalationStepsChecked?.map(s => SOURCE_LABELS[s] || s).join(" → ")}
+                <strong>Checked:</strong>{" "}
+                {selectedRequest.escalationStepsChecked
+                  ?.map((s) => SOURCE_LABELS[s] || s)
+                  .join(" → ")}
               </div>
 
               {/* Charge nurse warning banner */}
               {selectedRequest.originalWasChargeNurse &&
-                !selectedRequest.recommendations?.some(c => c.isChargeNurseQualified) && (
-                <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
-                  <span className="font-medium">⚠️ The original nurse was the charge nurse for this shift.</span>{" "}
-                  None of the recommended candidates are charge nurse qualified (Level 4+). Approving any option
-                  will assign an unqualified nurse as charge nurse, creating a hard rule violation.
-                </div>
-              )}
+                !selectedRequest.recommendations?.some(
+                  (c) => c.isChargeNurseQualified,
+                ) && (
+                  <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+                    <span className="font-medium">
+                      ⚠️ The original nurse was the charge nurse for this shift.
+                    </span>{" "}
+                    None of the recommended candidates are charge nurse
+                    qualified (Level 4+). Approving any option will assign an
+                    unqualified nurse as charge nurse, creating a hard rule
+                    violation.
+                  </div>
+                )}
 
               {/* Candidate Recommendations */}
               <div className="space-y-3">
@@ -483,19 +607,25 @@ export default function CoverageRequestsPage() {
                             <Badge className="text-xs">Best match</Badge>
                           )}
                           {candidate.staffId !== "agency" && candidate.role && (
-                            <Badge variant="secondary" className="text-xs">{candidate.role}</Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              {candidate.role}
+                            </Badge>
                           )}
-                          {candidate.staffId !== "agency" && candidate.icuCompetencyLevel !== undefined && (
-                            <span className="text-xs text-muted-foreground">
-                              Lv {candidate.icuCompetencyLevel}/5
-                            </span>
-                          )}
-                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${SOURCE_COLORS[candidate.source]}`}>
+                          {candidate.staffId !== "agency" &&
+                            candidate.icuCompetencyLevel !== undefined && (
+                              <span className="text-xs text-muted-foreground">
+                                Lv {candidate.icuCompetencyLevel}/5
+                              </span>
+                            )}
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded font-medium ${SOURCE_COLORS[candidate.source]}`}
+                          >
                             {SOURCE_LABELS[candidate.source]}
                           </span>
                           {candidate.isOvertime && (
                             <span className="text-xs px-2 py-0.5 rounded font-medium bg-red-100 text-red-700">
-                              OT — {candidate.hoursThisWeek}h + {selectedRequest.durationHours}h
+                              OT — {candidate.hoursThisWeek}h +{" "}
+                              {selectedRequest.durationHours}h
                             </span>
                           )}
                         </div>
@@ -504,8 +634,13 @@ export default function CoverageRequestsPage() {
                         {candidate.reasons.length > 0 && (
                           <ul className="space-y-0.5">
                             {candidate.reasons.map((reason, i) => (
-                              <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                                <span className="mt-px shrink-0 text-green-600 font-medium">✓</span>
+                              <li
+                                key={i}
+                                className="flex items-start gap-1.5 text-xs text-muted-foreground"
+                              >
+                                <span className="mt-px shrink-0 text-green-600 font-medium">
+                                  ✓
+                                </span>
                                 {reason}
                               </li>
                             ))}
@@ -516,18 +651,34 @@ export default function CoverageRequestsPage() {
                         {(() => {
                           const cons: { text: string; red?: boolean }[] = [];
                           if (candidate.isOvertime)
-                            cons.push({ text: `Overtime — ${candidate.hoursThisWeek}h this week (+${selectedRequest.durationHours}h = OT cost)` });
+                            cons.push({
+                              text: `Overtime — ${candidate.hoursThisWeek}h this week (+${selectedRequest.durationHours}h = OT cost)`,
+                            });
                           if ((candidate.weekendsThisPeriod ?? 0) >= 3)
-                            cons.push({ text: `${candidate.weekendsThisPeriod} weekends already worked this period` });
+                            cons.push({
+                              text: `${candidate.weekendsThisPeriod} weekends already worked this period`,
+                            });
                           if ((candidate.consecutiveDaysBeforeShift ?? 0) >= 4)
-                            cons.push({ text: `${candidate.consecutiveDaysBeforeShift} consecutive days — this would be day ${(candidate.consecutiveDaysBeforeShift ?? 0) + 1}` });
-                          if (selectedRequest.originalWasChargeNurse && !candidate.isChargeNurseQualified && candidate.staffId !== "agency")
-                            cons.push({ text: "Not charge nurse qualified — will create hard rule violation", red: true });
+                            cons.push({
+                              text: `${candidate.consecutiveDaysBeforeShift} consecutive days — this would be day ${(candidate.consecutiveDaysBeforeShift ?? 0) + 1}`,
+                            });
+                          if (
+                            selectedRequest.originalWasChargeNurse &&
+                            !candidate.isChargeNurseQualified &&
+                            candidate.staffId !== "agency"
+                          )
+                            cons.push({
+                              text: "Not charge nurse qualified — will create hard rule violation",
+                              red: true,
+                            });
                           if (cons.length === 0) return null;
                           return (
                             <ul className="space-y-0.5">
                               {cons.map((con, i) => (
-                                <li key={i} className={`flex items-start gap-1.5 text-xs ${con.red ? "text-red-600" : "text-amber-600"}`}>
+                                <li
+                                  key={i}
+                                  className={`flex items-start gap-1.5 text-xs ${con.red ? "text-red-600" : "text-amber-600"}`}
+                                >
                                   <span className="mt-px shrink-0">✗</span>
                                   {con.text}
                                 </li>
@@ -537,26 +688,36 @@ export default function CoverageRequestsPage() {
                         })()}
 
                         {/* Hours this week — only for overtime-tier candidates who aren't hitting OT */}
-                        {candidate.source === "overtime" && !candidate.isOvertime && (
-                          <p className={`text-xs ${
-                            candidate.hoursThisWeek + selectedRequest.durationHours > (candidate.fteHoursPerWeek ?? 40)
-                              ? "text-amber-600"
-                              : "text-muted-foreground"
-                          }`}>
-                            · {candidate.hoursThisWeek}h this week —{" "}
-                            {candidate.hoursThisWeek + selectedRequest.durationHours > (candidate.fteHoursPerWeek ?? 40)
-                              ? "FTE exceeded, no OT cost"
-                              : "within contracted hours"}
-                          </p>
-                        )}
+                        {candidate.source === "overtime" &&
+                          !candidate.isOvertime && (
+                            <p
+                              className={`text-xs ${
+                                candidate.hoursThisWeek +
+                                  selectedRequest.durationHours >
+                                (candidate.fteHoursPerWeek ?? 40)
+                                  ? "text-amber-600"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              · {candidate.hoursThisWeek}h this week —{" "}
+                              {candidate.hoursThisWeek +
+                                selectedRequest.durationHours >
+                              (candidate.fteHoursPerWeek ?? 40)
+                                ? "FTE exceeded, no OT cost"
+                                : "within contracted hours"}
+                            </p>
+                          )}
 
                         {/* Rest before shift */}
                         {candidate.staffId !== "agency" && (
-                          <p className={`text-xs ${
-                            candidate.restHoursBefore !== undefined && candidate.restHoursBefore < 12
-                              ? "text-amber-600"
-                              : "text-muted-foreground"
-                          }`}>
+                          <p
+                            className={`text-xs ${
+                              candidate.restHoursBefore !== undefined &&
+                              candidate.restHoursBefore < 12
+                                ? "text-amber-600"
+                                : "text-muted-foreground"
+                            }`}
+                          >
                             · Rest before shift:{" "}
                             {candidate.restHoursBefore !== undefined
                               ? `${Math.round(candidate.restHoursBefore)}h${candidate.restHoursBefore < 12 ? " — short turnaround" : ""}`
@@ -565,11 +726,15 @@ export default function CoverageRequestsPage() {
                         )}
                       </div>
                       <Button
-                        onClick={() => handleApproveCandidate(candidate.staffId)}
+                        onClick={() =>
+                          handleApproveCandidate(candidate.staffId)
+                        }
                         variant="outline"
                         className="shrink-0"
                       >
-                        {candidate.staffId === "agency" ? "Contact Agency" : "Approve"}
+                        {candidate.staffId === "agency"
+                          ? "Contact Agency"
+                          : "Approve"}
                       </Button>
                     </div>
                   </div>
@@ -577,7 +742,10 @@ export default function CoverageRequestsPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setApproveDialogOpen(false)}
+                >
                   Cancel
                 </Button>
               </div>

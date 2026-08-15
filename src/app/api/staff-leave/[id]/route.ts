@@ -1,13 +1,28 @@
 import { db } from "@/db";
-import { staffLeave, exceptionLog, assignment, shift, schedule, unit, openShift, callout, staff, shiftSwapRequest, notification } from "@/db/schema";
+import {
+  staffLeave,
+  exceptionLog,
+  assignment,
+  shift,
+  schedule,
+  unit,
+  openShift,
+  callout,
+  staff,
+  shiftSwapRequest,
+  notification,
+} from "@/db/schema";
 import { eq, and, or, gte, lte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { findCandidatesForShift } from "@/lib/coverage/find-candidates";
-import { insertNotification, composeLeaveDecided } from "@/lib/notifications/notify";
+import {
+  insertNotification,
+  composeLeaveDecided,
+} from "@/lib/notifications/notify";
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const leave = db.select().from(staffLeave).where(eq(staffLeave.id, id)).get();
@@ -21,7 +36,7 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const body = await request.json();
@@ -40,7 +55,7 @@ export async function PUT(
   if (body.status === "denied" && !body.denialReason?.trim()) {
     return NextResponse.json(
       { error: "A denial reason is required when denying a leave request." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -56,7 +71,10 @@ export async function PUT(
       endDate: body.endDate,
       status: body.status,
       notes: body.notes,
-      approvedAt: body.status === "approved" ? new Date().toISOString() : existing.approvedAt,
+      approvedAt:
+        body.status === "approved"
+          ? new Date().toISOString()
+          : existing.approvedAt,
       approvedBy: body.approvedBy ?? existing.approvedBy,
       denialReason: body.denialReason,
     })
@@ -66,28 +84,38 @@ export async function PUT(
 
   if (!updated) {
     return NextResponse.json(
-      { error: "Leave request was modified by someone else — refresh and try again." },
-      { status: 409 }
+      {
+        error:
+          "Leave request was modified by someone else — refresh and try again.",
+      },
+      { status: 409 },
     );
   }
 
   // Log status change if status changed
   if (existing.status !== body.status) {
-    const actionMap: Record<string, "leave_approved" | "leave_denied" | "updated"> = {
+    const actionMap: Record<
+      string,
+      "leave_approved" | "leave_denied" | "updated"
+    > = {
       approved: "leave_approved",
       denied: "leave_denied",
     };
     const action = actionMap[body.status] ?? "updated";
 
-    const staffRecord = db.select({ firstName: staff.firstName, lastName: staff.lastName })
-      .from(staff).where(eq(staff.id, existing.staffId)).get();
+    const staffRecord = db
+      .select({ firstName: staff.firstName, lastName: staff.lastName })
+      .from(staff)
+      .where(eq(staff.id, existing.staffId))
+      .get();
     const staffName = staffRecord
       ? `${staffRecord.firstName} ${staffRecord.lastName}`
       : existing.staffId;
 
-    const descriptionSuffix = body.status === "denied" && body.denialReason
-      ? ` — Reason: ${body.denialReason}`
-      : "";
+    const descriptionSuffix =
+      body.status === "denied" && body.denialReason
+        ? ` — Reason: ${body.denialReason}`
+        : "";
 
     db.insert(exceptionLog)
       .values({
@@ -114,7 +142,7 @@ export async function PUT(
             outcome: body.status,
             startDate: existing.startDate,
             endDate: existing.endDate,
-          })
+          }),
         );
       } catch (err) {
         console.error("[notify] leave_decided failed", err);
@@ -123,7 +151,12 @@ export async function PUT(
 
     // If approved, create open shifts or callouts for affected assignments
     if (body.status === "approved") {
-      await handleLeaveApproval(existing.staffId, staffName, updated!.startDate, updated!.endDate);
+      await handleLeaveApproval(
+        existing.staffId,
+        staffName,
+        updated!.startDate,
+        updated!.endDate,
+      );
     }
   }
 
@@ -135,7 +168,12 @@ export async function PUT(
  * - If shift is within callout threshold days: create callout (urgent - follow escalation)
  * - If shift is beyond threshold: find top 3 replacement candidates and present for approval
  */
-async function handleLeaveApproval(staffId: string, staffName: string, startDate: string, endDate: string) {
+async function handleLeaveApproval(
+  staffId: string,
+  staffName: string,
+  startDate: string,
+  endDate: string,
+) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -156,14 +194,16 @@ async function handleLeaveApproval(staffId: string, staffName: string, startDate
         eq(assignment.staffId, staffId),
         gte(shift.date, startDate),
         lte(shift.date, endDate),
-        eq(assignment.status, "assigned")
-      )
+        eq(assignment.status, "assigned"),
+      ),
     )
     .all();
 
   for (const a of affectedAssignments) {
     const shiftDate = new Date(a.shiftDate + "T00:00:00");
-    const daysUntilShift = Math.ceil((shiftDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntilShift = Math.ceil(
+      (shiftDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
 
     // Get unit config for threshold
     const unitConfig = db
@@ -177,11 +217,13 @@ async function handleLeaveApproval(staffId: string, staffName: string, startDate
 
     // Candidate search is async — run it BEFORE the transaction below
     // (better-sqlite3 transactions are synchronous).
-    let candidateResult: Awaited<ReturnType<typeof findCandidatesForShift>> | null = null;
+    let candidateResult: Awaited<
+      ReturnType<typeof findCandidatesForShift>
+    > | null = null;
     if (!isUrgent) {
       candidateResult = await findCandidatesForShift(
         a.shiftId,
-        staffId // Exclude the staff going on leave
+        staffId, // Exclude the staff going on leave
       );
     }
 
@@ -209,9 +251,9 @@ async function handleLeaveApproval(staffId: string, staffName: string, startDate
             eq(shiftSwapRequest.status, "pending"),
             or(
               eq(shiftSwapRequest.requestingAssignmentId, a.assignmentId),
-              eq(shiftSwapRequest.targetAssignmentId, a.assignmentId)
-            )
-          )
+              eq(shiftSwapRequest.targetAssignmentId, a.assignmentId),
+            ),
+          ),
         )
         .all();
       for (const s of staleSwaps) {
@@ -239,7 +281,8 @@ async function handleLeaveApproval(staffId: string, staffName: string, startDate
       if (isUrgent) {
         // Create callout (urgent - within threshold)
         // This follows the existing escalation workflow
-        const newCallout = db.insert(callout)
+        const newCallout = db
+          .insert(callout)
           .values({
             assignmentId: a.assignmentId,
             staffId: staffId,
@@ -266,11 +309,14 @@ async function handleLeaveApproval(staffId: string, staffName: string, startDate
         const { candidates, escalationStepsChecked } = candidateResult!;
 
         // Determine status based on whether we found candidates
-        const hasRealCandidates = candidates.some(c => c.staffId !== "agency");
+        const hasRealCandidates = candidates.some(
+          (c) => c.staffId !== "agency",
+        );
         const status = hasRealCandidates ? "pending_approval" : "no_candidates";
 
         // Create coverage request with recommendations
-        const newCoverageRequest = db.insert(openShift)
+        const newCoverageRequest = db
+          .insert(openShift)
           .values({
             shiftId: a.shiftId,
             originalStaffId: staffId,
@@ -293,7 +339,11 @@ async function handleLeaveApproval(staffId: string, staffName: string, startDate
             action: "open_shift_created",
             description: `Coverage request created for shift on ${a.shiftDate}. Found ${candidates.length} candidate(s). Status: ${status}`,
             newState: {
-              candidates: candidates.map(c => ({ staffId: c.staffId, name: c.staffName, source: c.source })),
+              candidates: candidates.map((c) => ({
+                staffId: c.staffId,
+                name: c.staffName,
+                source: c.source,
+              })),
               escalationStepsChecked,
             },
             performedBy: "system",
@@ -306,12 +356,42 @@ async function handleLeaveApproval(staffId: string, staffName: string, startDate
 }
 
 export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
-  const existing = db.select().from(staffLeave).where(eq(staffLeave.id, id)).get();
+  const existing = db
+    .select()
+    .from(staffLeave)
+    .where(eq(staffLeave.id, id))
+    .get();
+
+  // Nurses may only withdraw THEIR OWN request while it is still pending.
+  // Once a manager has decided (approved/denied), coverage may already be in
+  // motion — undoing that is a manager action. Managers (or auth off) keep the
+  // unrestricted delete they always had.
+  const role = request.headers.get("x-user-role");
+  const callerStaffId = request.headers.get("x-staff-id");
+  const isNurseCaller = role === "nurse";
+  if (isNurseCaller && existing) {
+    if (existing.staffId !== callerStaffId) {
+      return NextResponse.json(
+        { error: "You can only withdraw your own request." },
+        { status: 403 },
+      );
+    }
+    if (existing.status !== "pending") {
+      return NextResponse.json(
+        {
+          error:
+            "This request was already decided — ask your manager to change it.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   if (existing) {
     const staffRecord = db
       .select({ firstName: staff.firstName, lastName: staff.lastName })
@@ -327,10 +407,12 @@ export async function DELETE(
         entityType: "leave",
         entityId: id,
         action: "deleted",
-        description: `Leave record deleted for ${staffName}: ${existing.leaveType} from ${existing.startDate} to ${existing.endDate}`,
+        description: isNurseCaller
+          ? `Leave request withdrawn by ${staffName}: ${existing.leaveType} from ${existing.startDate} to ${existing.endDate}`
+          : `Leave record deleted for ${staffName}: ${existing.leaveType} from ${existing.startDate} to ${existing.endDate}`,
         previousState: existing as unknown as Record<string, unknown>,
         justification: existing.reason || undefined,
-        performedBy: "nurse_manager",
+        performedBy: isNurseCaller ? staffName : "nurse_manager",
         createdAt: new Date().toISOString(),
       })
       .run();

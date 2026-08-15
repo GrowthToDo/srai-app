@@ -25,16 +25,22 @@ export const unit = sqliteTable(
     })
       .notNull()
       .default("count_per_period"),
-    weekendShiftsRequired: integer("weekend_shifts_required").notNull().default(3), // per 6-week schedule
+    weekendShiftsRequired: integer("weekend_shifts_required")
+      .notNull()
+      .default(3), // per 6-week schedule
     schedulePeriodWeeks: integer("schedule_period_weeks").notNull().default(6),
     // Holiday fairness - similar to weekend
-    holidayShiftsRequired: integer("holiday_shifts_required").notNull().default(1), // per schedule period
+    holidayShiftsRequired: integer("holiday_shifts_required")
+      .notNull()
+      .default(1), // per schedule period
     // Escalation sequence for callouts (JSON array of sources in priority order)
     escalationSequence: text("escalation_sequence", { mode: "json" })
       .$type<string[]>()
       .default(["float", "per_diem", "overtime", "agency"]),
     // Acuity configuration - extra RNs/LPNs needed at each level
-    acuityYellowExtraStaff: integer("acuity_yellow_extra_staff").notNull().default(1),
+    acuityYellowExtraStaff: integer("acuity_yellow_extra_staff")
+      .notNull()
+      .default(1),
     acuityRedExtraStaff: integer("acuity_red_extra_staff").notNull().default(2),
     // Low census policy - order of who to send home (JSON array)
     // Note: Agency removed - contracts typically guarantee minimum hours
@@ -44,14 +50,20 @@ export const unit = sqliteTable(
     // Days before shift when leave approval creates callout vs open shift
     // If leave is approved within this many days of shift, create callout (urgent)
     // If beyond this threshold, create open shift for bidding
-    calloutThresholdDays: integer("callout_threshold_days").notNull().default(7),
+    calloutThresholdDays: integer("callout_threshold_days")
+      .notNull()
+      .default(7),
     // OT approval threshold (hours beyond which CNO approval needed)
     otApprovalThreshold: integer("ot_approval_threshold").notNull().default(4),
     // On-call limits
     maxOnCallPerWeek: integer("max_on_call_per_week").notNull().default(1),
-    maxOnCallWeekendsPerMonth: integer("max_on_call_weekends_per_month").notNull().default(1),
+    maxOnCallWeekendsPerMonth: integer("max_on_call_weekends_per_month")
+      .notNull()
+      .default(1),
     // Consecutive weekend penalty threshold
-    maxConsecutiveWeekends: integer("max_consecutive_weekends").notNull().default(2),
+    maxConsecutiveWeekends: integer("max_consecutive_weekends")
+      .notNull()
+      .default(2),
     // Absolute staffing floor regardless of census level
     minStaffDay: integer("min_staff_day").notNull().default(3),
     minStaffNight: integer("min_staff_night").notNull().default(2),
@@ -63,7 +75,7 @@ export const unit = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [index("unit_name_idx").on(table.name)]
+  (table) => [index("unit_name_idx").on(table.name)],
 );
 
 // ============================================================
@@ -86,7 +98,7 @@ export const publicHoliday = sqliteTable(
   (table) => [
     index("public_holiday_date_idx").on(table.date),
     index("public_holiday_year_idx").on(table.year),
-  ]
+  ],
 );
 
 // ============================================================
@@ -138,7 +150,9 @@ export const staff = sqliteTable(
     // Flex hours year-to-date for low census rotation fairness
     flexHoursYearToDate: real("flex_hours_year_to_date").notNull().default(0),
     // Voluntary time off - staff indicates willingness to go home during low census
-    voluntaryFlexAvailable: integer("voluntary_flex_available", { mode: "boolean" })
+    voluntaryFlexAvailable: integer("voluntary_flex_available", {
+      mode: "boolean",
+    })
       .notNull()
       .default(false),
     notes: text("notes"),
@@ -154,7 +168,7 @@ export const staff = sqliteTable(
     index("staff_employment_type_idx").on(table.employmentType),
     index("staff_active_idx").on(table.isActive),
     index("staff_home_unit_idx").on(table.homeUnit),
-  ]
+  ],
 );
 
 // ============================================================
@@ -179,13 +193,15 @@ export const staffPreferences = sqliteTable(
       .default([]),
     preferredPattern: text("preferred_pattern"),
     // Legacy field - kept for backwards compatibility but weekend fairness now handled by unit rules
-    avoidWeekends: integer("avoid_weekends", { mode: "boolean" }).default(false),
+    avoidWeekends: integer("avoid_weekends", { mode: "boolean" }).default(
+      false,
+    ),
     notes: text("notes"),
     updatedAt: text("updated_at")
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [uniqueIndex("staff_preferences_staff_idx").on(table.staffId)]
+  (table) => [uniqueIndex("staff_preferences_staff_idx").on(table.staffId)],
 );
 
 // ============================================================
@@ -201,7 +217,15 @@ export const staffLeave = sqliteTable(
       .notNull()
       .references(() => staff.id, { onDelete: "cascade" }),
     leaveType: text("leave_type", {
-      enum: ["vacation", "sick", "maternity", "medical", "personal", "bereavement", "other"],
+      enum: [
+        "vacation",
+        "sick",
+        "maternity",
+        "medical",
+        "personal",
+        "bereavement",
+        "other",
+      ],
     }).notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date").notNull(),
@@ -226,7 +250,7 @@ export const staffLeave = sqliteTable(
     index("staff_leave_staff_idx").on(table.staffId),
     index("staff_leave_dates_idx").on(table.startDate, table.endDate),
     index("staff_leave_status_idx").on(table.status),
-  ]
+  ],
 );
 
 // ============================================================
@@ -260,8 +284,11 @@ export const prnAvailability = sqliteTable(
   (table) => [
     index("prn_availability_staff_idx").on(table.staffId),
     index("prn_availability_schedule_idx").on(table.scheduleId),
-    uniqueIndex("prn_availability_unique_idx").on(table.staffId, table.scheduleId),
-  ]
+    uniqueIndex("prn_availability_unique_idx").on(
+      table.staffId,
+      table.scheduleId,
+    ),
+  ],
 );
 
 // ============================================================
@@ -326,7 +353,7 @@ export const censusBand = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [index("census_band_unit_idx").on(table.unit)]
+  (table) => [index("census_band_unit_idx").on(table.unit)],
 );
 
 // ============================================================
@@ -341,14 +368,7 @@ export const rule = sqliteTable(
     name: text("name").notNull(),
     ruleType: text("rule_type", { enum: ["hard", "soft"] }).notNull(),
     category: text("category", {
-      enum: [
-        "staffing",
-        "rest",
-        "fairness",
-        "cost",
-        "skill",
-        "preference",
-      ],
+      enum: ["staffing", "rest", "fairness", "cost", "skill", "preference"],
     }).notNull(),
     description: text("description"),
     parameters: text("parameters", { mode: "json" })
@@ -366,7 +386,7 @@ export const rule = sqliteTable(
   (table) => [
     index("rule_type_idx").on(table.ruleType),
     index("rule_category_idx").on(table.category),
-  ]
+  ],
 );
 
 // ============================================================
@@ -400,7 +420,7 @@ export const schedule = sqliteTable(
     index("schedule_status_idx").on(table.status),
     index("schedule_dates_idx").on(table.startDate, table.endDate),
     index("schedule_unit_idx").on(table.unit),
-  ]
+  ],
 );
 
 // ============================================================
@@ -444,9 +464,9 @@ export const shift = sqliteTable(
     uniqueIndex("shift_unique_idx").on(
       table.scheduleId,
       table.shiftDefinitionId,
-      table.date
+      table.date,
     ),
-  ]
+  ],
 );
 
 // ============================================================
@@ -468,7 +488,14 @@ export const assignment = sqliteTable(
       .notNull()
       .references(() => schedule.id, { onDelete: "cascade" }),
     status: text("status", {
-      enum: ["assigned", "confirmed", "called_out", "swapped", "cancelled", "flexed"],
+      enum: [
+        "assigned",
+        "confirmed",
+        "called_out",
+        "swapped",
+        "cancelled",
+        "flexed",
+      ],
     })
       .notNull()
       .default("assigned"),
@@ -502,9 +529,7 @@ export const assignment = sqliteTable(
       .default(false),
     safeHarborFormId: text("safe_harbor_form_id"),
     // Track if this is a float assignment (staff working outside home unit)
-    isFloat: integer("is_float", { mode: "boolean" })
-      .notNull()
-      .default(false),
+    isFloat: integer("is_float", { mode: "boolean" }).notNull().default(false),
     floatFromUnit: text("float_from_unit"),
     notes: text("notes"),
     createdAt: text("created_at")
@@ -519,7 +544,7 @@ export const assignment = sqliteTable(
     index("assignment_staff_idx").on(table.staffId),
     index("assignment_schedule_idx").on(table.scheduleId),
     uniqueIndex("assignment_unique_idx").on(table.shiftId, table.staffId),
-  ]
+  ],
 );
 
 // ============================================================
@@ -539,10 +564,10 @@ export const shiftSwapRequest = sqliteTable(
       .notNull()
       .references(() => staff.id),
     // The assignment being offered in exchange (optional - can be open request)
-    targetAssignmentId: text("target_assignment_id")
-      .references(() => assignment.id),
-    targetStaffId: text("target_staff_id")
-      .references(() => staff.id),
+    targetAssignmentId: text("target_assignment_id").references(
+      () => assignment.id,
+    ),
+    targetStaffId: text("target_staff_id").references(() => staff.id),
     status: text("status", {
       enum: ["pending", "approved", "denied", "cancelled"],
     })
@@ -565,7 +590,7 @@ export const shiftSwapRequest = sqliteTable(
     index("swap_request_requesting_staff_idx").on(table.requestingStaffId),
     index("swap_request_target_staff_idx").on(table.targetStaffId),
     index("swap_request_status_idx").on(table.status),
-  ]
+  ],
 );
 
 // ============================================================
@@ -593,9 +618,7 @@ export const callout = sqliteTable(
     calledOutAt: text("called_out_at")
       .notNull()
       .default(sql`(datetime('now'))`),
-    replacementStaffId: text("replacement_staff_id").references(
-      () => staff.id
-    ),
+    replacementStaffId: text("replacement_staff_id").references(() => staff.id),
     replacementSource: text("replacement_source", {
       enum: ["float", "per_diem", "overtime", "agency", "unfilled"],
     }),
@@ -624,7 +647,7 @@ export const callout = sqliteTable(
     index("callout_shift_idx").on(table.shiftId),
     index("callout_staff_idx").on(table.staffId),
     index("callout_status_idx").on(table.status),
-  ]
+  ],
 );
 
 // ============================================================
@@ -687,7 +710,7 @@ export const scenario = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [index("scenario_schedule_idx").on(table.scheduleId)]
+  (table) => [index("scenario_schedule_idx").on(table.scheduleId)],
 );
 
 // ============================================================
@@ -771,7 +794,7 @@ export const exceptionLog = sqliteTable(
     index("exception_log_entity_idx").on(table.entityType, table.entityId),
     index("exception_log_action_idx").on(table.action),
     index("exception_log_date_idx").on(table.createdAt),
-  ]
+  ],
 );
 
 // ============================================================
@@ -789,8 +812,12 @@ export const staffHolidayAssignment = sqliteTable(
     // Logical holiday name (e.g., "Christmas" for both Eve and Day)
     holidayName: text("holiday_name").notNull(),
     year: integer("year").notNull(),
-    shiftId: text("shift_id").references(() => shift.id, { onDelete: "set null" }),
-    assignmentId: text("assignment_id").references(() => assignment.id, { onDelete: "set null" }),
+    shiftId: text("shift_id").references(() => shift.id, {
+      onDelete: "set null",
+    }),
+    assignmentId: text("assignment_id").references(() => assignment.id, {
+      onDelete: "set null",
+    }),
     assignedAt: text("assigned_at")
       .notNull()
       .default(sql`(datetime('now'))`),
@@ -798,14 +825,17 @@ export const staffHolidayAssignment = sqliteTable(
   (table) => [
     index("staff_holiday_assignment_staff_idx").on(table.staffId),
     index("staff_holiday_assignment_year_idx").on(table.year),
-    index("staff_holiday_assignment_holiday_idx").on(table.holidayName, table.year),
+    index("staff_holiday_assignment_holiday_idx").on(
+      table.holidayName,
+      table.year,
+    ),
     // Prevent duplicate holiday assignments for same staff in same year
     uniqueIndex("staff_holiday_assignment_unique_idx").on(
       table.staffId,
       table.holidayName,
-      table.year
+      table.year,
     ),
-  ]
+  ],
 );
 
 // ============================================================
@@ -854,7 +884,7 @@ export const generationJob = sqliteTable(
   (table) => [
     index("generation_job_schedule_idx").on(table.scheduleId),
     index("generation_job_status_idx").on(table.status),
-  ]
+  ],
 );
 
 // ============================================================
@@ -873,14 +903,22 @@ export const openShift = sqliteTable(
     originalStaffId: text("original_staff_id")
       .notNull()
       .references(() => staff.id),
-    originalAssignmentId: text("original_assignment_id")
-      .references(() => assignment.id, { onDelete: "set null" }),
+    originalAssignmentId: text("original_assignment_id").references(
+      () => assignment.id,
+      { onDelete: "set null" },
+    ),
     reason: text("reason", {
       enum: ["leave_approved", "callout", "schedule_change", "other"],
     }).notNull(),
     reasonDetail: text("reason_detail"),
     status: text("status", {
-      enum: ["pending_approval", "approved", "filled", "cancelled", "no_candidates"],
+      enum: [
+        "pending_approval",
+        "approved",
+        "filled",
+        "cancelled",
+        "no_candidates",
+      ],
     })
       .notNull()
       .default("pending_approval"),
@@ -892,15 +930,17 @@ export const openShift = sqliteTable(
     // Top 3 candidate recommendations with reasons
     // Each candidate includes: staffId, name, source (float/prn/overtime/agency), reasons[], score
     recommendations: text("recommendations", { mode: "json" })
-      .$type<{
-        staffId: string;
-        staffName: string;
-        source: "float" | "per_diem" | "overtime" | "agency";
-        reasons: string[];
-        score: number;
-        isOvertime: boolean;
-        hoursThisWeek: number;
-      }[]>()
+      .$type<
+        {
+          staffId: string;
+          staffName: string;
+          source: "float" | "per_diem" | "overtime" | "agency";
+          reasons: string[];
+          score: number;
+          isOvertime: boolean;
+          hoursThisWeek: number;
+        }[]
+      >()
       .default([]),
     // Which escalation steps were checked
     escalationStepsChecked: text("escalation_steps_checked", { mode: "json" })
@@ -918,14 +958,46 @@ export const openShift = sqliteTable(
     approvedBy: text("approved_by"),
     filledAt: text("filled_at"),
     filledByStaffId: text("filled_by_staff_id").references(() => staff.id),
-    filledByAssignmentId: text("filled_by_assignment_id").references(() => assignment.id),
+    filledByAssignmentId: text("filled_by_assignment_id").references(
+      () => assignment.id,
+    ),
     notes: text("notes"),
   },
   (table) => [
     index("open_shift_shift_idx").on(table.shiftId),
     index("open_shift_status_idx").on(table.status),
     index("open_shift_priority_idx").on(table.priority),
-  ]
+  ],
+);
+
+// A nurse raising their hand for a posted open shift. Interest is NOT
+// assignment — the manager reviews raised hands on /open-shifts and confirms;
+// nurses never self-assign (production spec P7 / founder direction
+// 2026-08-15). One row per (openShift, staff), enforced by the unique index.
+export const openShiftInterest = sqliteTable(
+  "open_shift_interest",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    openShiftId: text("open_shift_id")
+      .notNull()
+      .references(() => openShift.id, { onDelete: "cascade" }),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id, { onDelete: "cascade" }),
+    note: text("note"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex("open_shift_interest_unique_idx").on(
+      table.openShiftId,
+      table.staffId,
+    ),
+    index("open_shift_interest_staff_idx").on(table.staffId),
+  ],
 );
 
 // ============================================================
@@ -955,7 +1027,7 @@ export const user = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [uniqueIndex("user_email_idx").on(table.email)]
+  (table) => [uniqueIndex("user_email_idx").on(table.email)],
 );
 
 // ============================================================
@@ -982,6 +1054,8 @@ export const notification = sqliteTable(
         "swap_response",
         "swap_decided",
         "leave_decided",
+        "open_shift_posted",
+        "open_shift_decided",
       ],
     }).notNull(),
     title: text("title").notNull(),
@@ -995,5 +1069,5 @@ export const notification = sqliteTable(
   (table) => [
     index("notification_staff_read_idx").on(table.staffId, table.readAt),
     index("notification_created_idx").on(table.createdAt),
-  ]
+  ],
 );

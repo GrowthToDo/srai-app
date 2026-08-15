@@ -33,8 +33,12 @@ import {
 } from "@/components/ui/select";
 import { GuideNudge } from "@/components/ui/guide-nudge";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
-import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import {
+  isPracticeText,
+  stripPracticeMarker,
+} from "@/lib/onboarding/practice-marker";
 import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface LeaveRequest {
   id: string;
@@ -70,7 +74,10 @@ const leaveTypeLabels: Record<string, string> = {
   other: "Other",
 };
 
-const statusColors: Record<string, "default" | "secondary" | "destructive" | "warning"> = {
+const statusColors: Record<
+  string,
+  "default" | "secondary" | "destructive" | "warning"
+> = {
   pending: "warning",
   approved: "default",
   denied: "destructive",
@@ -79,12 +86,18 @@ const statusColors: Record<string, "default" | "secondary" | "destructive" | "wa
 function calcDays(startDate: string, endDate: string): number {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  const diff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  const diff = Math.round(
+    (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+  );
   return diff + 1;
 }
 
 function fmtDate(dateStr: string) {
-  try { return format(parseISO(dateStr), "MMM d, yyyy"); } catch { return dateStr; }
+  try {
+    return format(parseISO(dateStr), "MMM d, yyyy");
+  } catch {
+    return dateStr;
+  }
 }
 
 /** A practice-seeded leave carries the marker in notes (falls back to reason). */
@@ -99,12 +112,17 @@ export default function LeavePage() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "denied">("all");
+  const [filter, setFilter] = useState<
+    "all" | "pending" | "approved" | "denied"
+  >("all");
 
   // Guard: acting on a REAL request while the tutorial is active asks first.
   const [confirmRealOpen, setConfirmRealOpen] = useState(false);
-  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
+  const [pendingRealAction, setPendingRealAction] = useState<
+    (() => void) | null
+  >(null);
 
   // Detail dialog
   const [detailRequest, setDetailRequest] = useState<LeaveRequest | null>(null);
@@ -124,15 +142,22 @@ export default function LeavePage() {
   const [formError, setFormError] = useState("");
 
   const fetchData = useCallback(async () => {
-    const [leaveRes, staffRes] = await Promise.all([
-      fetch("/api/staff-leave"),
-      fetch("/api/staff"),
-    ]);
-    const leaveData = await leaveRes.json();
-    const staffData = await staffRes.json();
-    setLeaveRequests(leaveData);
-    setStaff(staffData);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [leaveData, staffData] = await Promise.all([
+        fetchJson<LeaveRequest[]>("/api/staff-leave"),
+        fetchJson<StaffMember[]>("/api/staff"),
+      ]);
+      setLeaveRequests(leaveData);
+      setStaff(staffData);
+    } catch {
+      setLoadError(
+        "Couldn't load leave requests. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -156,11 +181,23 @@ export default function LeavePage() {
       body: JSON.stringify(form),
     });
     setDialogOpen(false);
-    setForm({ staffId: "", leaveType: "vacation", startDate: "", endDate: "", notes: "" });
+    setForm({
+      staffId: "",
+      leaveType: "vacation",
+      startDate: "",
+      endDate: "",
+      notes: "",
+    });
     if (res.ok) {
       const staffMember = staff.find((s) => s.id === form.staffId);
-      const name = staffMember ? `${staffMember.firstName} ${staffMember.lastName}` : "Staff member";
-      addToast({ title: "Leave request submitted", description: `${name} — ${leaveTypeLabels[form.leaveType] || form.leaveType}`, variant: "success" });
+      const name = staffMember
+        ? `${staffMember.firstName} ${staffMember.lastName}`
+        : "Staff member";
+      addToast({
+        title: "Leave request submitted",
+        description: `${name} — ${leaveTypeLabels[form.leaveType] || form.leaveType}`,
+        variant: "success",
+      });
     } else {
       addToast({ title: "Failed to submit request", variant: "error" });
     }
@@ -194,7 +231,10 @@ export default function LeavePage() {
     const res = await fetch(`/api/staff-leave/${denyTarget.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "denied", denialReason: denialReason.trim() }),
+      body: JSON.stringify({
+        status: "denied",
+        denialReason: denialReason.trim(),
+      }),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -224,11 +264,14 @@ export default function LeavePage() {
     act();
   }
 
-  const filteredRequests = filter === "all"
-    ? leaveRequests
-    : leaveRequests.filter(r => r.status === filter);
+  const filteredRequests =
+    filter === "all"
+      ? leaveRequests
+      : leaveRequests.filter((r) => r.status === filter);
 
-  const pendingCount = leaveRequests.filter(r => r.status === "pending").length;
+  const pendingCount = leaveRequests.filter(
+    (r) => r.status === "pending",
+  ).length;
 
   return (
     <div>
@@ -254,7 +297,9 @@ export default function LeavePage() {
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
             {f === "pending" && pendingCount > 0 && (
-              <Badge variant="secondary" className="ml-2">{pendingCount}</Badge>
+              <Badge variant="secondary" className="ml-2">
+                {pendingCount}
+              </Badge>
             )}
           </Button>
         ))}
@@ -267,22 +312,47 @@ export default function LeavePage() {
         <CardContent>
           {loading ? (
             <p className="text-muted-foreground">Loading...</p>
+          ) : loadError ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-destructive">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={fetchData}>
+                Try again
+              </Button>
+            </div>
           ) : filteredRequests.length === 0 ? (
             <div className="rounded-lg border-2 border-dashed border-muted p-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-                  <path d="M4.18 4.18A2 2 0 0 0 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 1.82-1.18"/><path d="M21 15.5V6a2 2 0 0 0-2-2H9.5"/><path d="M16 2v4"/><path d="M3 10h7"/><path d="M21 10h-5.5"/><path d="m2 2 20 20"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-muted-foreground"
+                >
+                  <path d="M4.18 4.18A2 2 0 0 0 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 1.82-1.18" />
+                  <path d="M21 15.5V6a2 2 0 0 0-2-2H9.5" />
+                  <path d="M16 2v4" />
+                  <path d="M3 10h7" />
+                  <path d="M21 10h-5.5" />
+                  <path d="m2 2 20 20" />
                 </svg>
               </div>
               <p className="font-medium">
-                {filter === "all" ? "No leave requests" : `No ${filter} leave requests`}
+                {filter === "all"
+                  ? "No leave requests"
+                  : `No ${filter} leave requests`}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {filter === "pending"
                   ? "All caught up — no requests awaiting approval."
                   : filter === "all"
-                  ? "Nurse time-off requests appear here; approving one automatically blocks scheduling and creates coverage where needed."
-                  : "Leave requests will appear here once submitted."}
+                    ? "Nurse time-off requests appear here; approving one automatically blocks scheduling and creates coverage where needed."
+                    : "Leave requests will appear here once submitted."}
               </p>
             </div>
           ) : (
@@ -302,66 +372,86 @@ export default function LeavePage() {
                 {filteredRequests.map((req) => {
                   const isPractice = isPracticeLeave(req);
                   return (
-                  <TableRow
-                    key={req.id}
-                    className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
-                  >
-                    <TableCell className="font-medium">
-                      <span className="inline-flex items-center gap-2">
-                        {req.staffFirstName} {req.staffLastName}
-                        {isPractice && (
-                          <Badge variant="default" className="text-xs">Practice</Badge>
-                        )}
-                      </span>
-                    </TableCell>
-                    <TableCell>{leaveTypeLabels[req.leaveType] || req.leaveType}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                      {fmtDate(req.startDate)} — {fmtDate(req.endDate)}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {calcDays(req.startDate, req.endDate)}d
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[req.status]}>{req.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                      {fmtDate(req.submittedAt)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {req.status === "pending" && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => guardRealAction(req, () => handleApprove(req.id))}
-                            >
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => guardRealAction(req, () => { setDenyTarget(req); setDenialReason(""); setDenyError(""); })}
-                            >
-                              Deny
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setDetailRequest(req)}
-                        >
-                          View
-                        </Button>
-                        <EntityHistoryDialog
-                          entityId={req.id}
-                          entityType="leave"
-                          title="Leave Request History"
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                    <TableRow
+                      key={req.id}
+                      className={
+                        isPractice
+                          ? "bg-amber-50 dark:bg-amber-950/20"
+                          : undefined
+                      }
+                    >
+                      <TableCell className="font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          {req.staffFirstName} {req.staffLastName}
+                          {isPractice && (
+                            <Badge variant="default" className="text-xs">
+                              Practice
+                            </Badge>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {leaveTypeLabels[req.leaveType] || req.leaveType}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {fmtDate(req.startDate)} — {fmtDate(req.endDate)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {calcDays(req.startDate, req.endDate)}d
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusColors[req.status]}>
+                          {req.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {fmtDate(req.submittedAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          {req.status === "pending" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() =>
+                                  guardRealAction(req, () =>
+                                    handleApprove(req.id),
+                                  )
+                                }
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() =>
+                                  guardRealAction(req, () => {
+                                    setDenyTarget(req);
+                                    setDenialReason("");
+                                    setDenyError("");
+                                  })
+                                }
+                              >
+                                Deny
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setDetailRequest(req)}
+                          >
+                            View
+                          </Button>
+                          <EntityHistoryDialog
+                            entityId={req.id}
+                            entityType="leave"
+                            title="Leave Request History"
+                          />
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
               </TableBody>
@@ -371,7 +461,12 @@ export default function LeavePage() {
       </Card>
 
       {/* Detail Dialog */}
-      <Dialog open={!!detailRequest} onOpenChange={(open) => { if (!open) setDetailRequest(null); }}>
+      <Dialog
+        open={!!detailRequest}
+        onOpenChange={(open) => {
+          if (!open) setDetailRequest(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Leave Request Detail</DialogTitle>
@@ -380,60 +475,90 @@ export default function LeavePage() {
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <span className="font-medium text-muted-foreground">Staff</span>
-                <span>{detailRequest.staffFirstName} {detailRequest.staffLastName}</span>
+                <span>
+                  {detailRequest.staffFirstName} {detailRequest.staffLastName}
+                </span>
 
                 <span className="font-medium text-muted-foreground">Type</span>
-                <span>{leaveTypeLabels[detailRequest.leaveType] || detailRequest.leaveType}</span>
+                <span>
+                  {leaveTypeLabels[detailRequest.leaveType] ||
+                    detailRequest.leaveType}
+                </span>
 
                 <span className="font-medium text-muted-foreground">Dates</span>
                 <span>
-                  {fmtDate(detailRequest.startDate)} — {fmtDate(detailRequest.endDate)}
+                  {fmtDate(detailRequest.startDate)} —{" "}
+                  {fmtDate(detailRequest.endDate)}
                   <span className="ml-2 text-muted-foreground">
-                    ({calcDays(detailRequest.startDate, detailRequest.endDate)} days)
+                    ({calcDays(detailRequest.startDate, detailRequest.endDate)}{" "}
+                    days)
                   </span>
                 </span>
 
-                <span className="font-medium text-muted-foreground">Status</span>
-                <Badge variant={statusColors[detailRequest.status]} className="w-fit">
+                <span className="font-medium text-muted-foreground">
+                  Status
+                </span>
+                <Badge
+                  variant={statusColors[detailRequest.status]}
+                  className="w-fit"
+                >
                   {detailRequest.status}
                 </Badge>
 
-                <span className="font-medium text-muted-foreground">Submitted</span>
+                <span className="font-medium text-muted-foreground">
+                  Submitted
+                </span>
                 <span>{fmtDate(detailRequest.submittedAt)}</span>
 
-                {detailRequest.status === "approved" && detailRequest.approvedAt && (
-                  <>
-                    <span className="font-medium text-muted-foreground">Approved</span>
-                    <span>{fmtDate(detailRequest.approvedAt)}</span>
-                    {detailRequest.approvedBy && (
-                      <>
-                        <span className="font-medium text-muted-foreground">Approved By</span>
-                        <span>{detailRequest.approvedBy}</span>
-                      </>
-                    )}
-                  </>
-                )}
+                {detailRequest.status === "approved" &&
+                  detailRequest.approvedAt && (
+                    <>
+                      <span className="font-medium text-muted-foreground">
+                        Approved
+                      </span>
+                      <span>{fmtDate(detailRequest.approvedAt)}</span>
+                      {detailRequest.approvedBy && (
+                        <>
+                          <span className="font-medium text-muted-foreground">
+                            Approved By
+                          </span>
+                          <span>{detailRequest.approvedBy}</span>
+                        </>
+                      )}
+                    </>
+                  )}
 
-                {detailRequest.status === "denied" && detailRequest.denialReason && (
-                  <>
-                    <span className="font-medium text-muted-foreground">Denial Reason</span>
-                    <span className="text-destructive">{detailRequest.denialReason}</span>
-                  </>
-                )}
+                {detailRequest.status === "denied" &&
+                  detailRequest.denialReason && (
+                    <>
+                      <span className="font-medium text-muted-foreground">
+                        Denial Reason
+                      </span>
+                      <span className="text-destructive">
+                        {detailRequest.denialReason}
+                      </span>
+                    </>
+                  )}
 
-                {detailRequest.reason && stripPracticeMarker(detailRequest.reason) && (
-                  <>
-                    <span className="font-medium text-muted-foreground">Reason</span>
-                    <span>{stripPracticeMarker(detailRequest.reason)}</span>
-                  </>
-                )}
+                {detailRequest.reason &&
+                  stripPracticeMarker(detailRequest.reason) && (
+                    <>
+                      <span className="font-medium text-muted-foreground">
+                        Reason
+                      </span>
+                      <span>{stripPracticeMarker(detailRequest.reason)}</span>
+                    </>
+                  )}
 
-                {detailRequest.notes && stripPracticeMarker(detailRequest.notes) && (
-                  <>
-                    <span className="font-medium text-muted-foreground">Notes</span>
-                    <span>{stripPracticeMarker(detailRequest.notes)}</span>
-                  </>
-                )}
+                {detailRequest.notes &&
+                  stripPracticeMarker(detailRequest.notes) && (
+                    <>
+                      <span className="font-medium text-muted-foreground">
+                        Notes
+                      </span>
+                      <span>{stripPracticeMarker(detailRequest.notes)}</span>
+                    </>
+                  )}
               </div>
             </div>
           )}
@@ -444,7 +569,11 @@ export default function LeavePage() {
       <Dialog
         open={!!denyTarget}
         onOpenChange={(open) => {
-          if (!open) { setDenyTarget(null); setDenialReason(""); setDenyError(""); }
+          if (!open) {
+            setDenyTarget(null);
+            setDenialReason("");
+            setDenyError("");
+          }
         }}
       >
         <DialogContent className="sm:max-w-md">
@@ -457,9 +586,11 @@ export default function LeavePage() {
                 Denying{" "}
                 <span className="font-medium text-foreground">
                   {denyTarget.staffFirstName} {denyTarget.staffLastName}
-                </span>
-                {" "}— {leaveTypeLabels[denyTarget.leaveType] || denyTarget.leaveType},{" "}
-                {denyTarget.startDate} to {denyTarget.endDate} ({calcDays(denyTarget.startDate, denyTarget.endDate)} days).
+                </span>{" "}
+                —{" "}
+                {leaveTypeLabels[denyTarget.leaveType] || denyTarget.leaveType},{" "}
+                {denyTarget.startDate} to {denyTarget.endDate} (
+                {calcDays(denyTarget.startDate, denyTarget.endDate)} days).
               </p>
               <div>
                 <Label>
@@ -467,7 +598,10 @@ export default function LeavePage() {
                 </Label>
                 <Textarea
                   value={denialReason}
-                  onChange={(e) => { setDenialReason(e.target.value); setDenyError(""); }}
+                  onChange={(e) => {
+                    setDenialReason(e.target.value);
+                    setDenyError("");
+                  }}
                   placeholder="Explain why this request is being denied (required for the audit trail)..."
                   rows={3}
                   className="mt-1"
@@ -479,7 +613,11 @@ export default function LeavePage() {
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => { setDenyTarget(null); setDenialReason(""); setDenyError(""); }}
+                  onClick={() => {
+                    setDenyTarget(null);
+                    setDenialReason("");
+                    setDenyError("");
+                  }}
                 >
                   Cancel
                 </Button>
@@ -493,7 +631,13 @@ export default function LeavePage() {
       </Dialog>
 
       {/* New Leave Request Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setFormError(""); }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setFormError("");
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Leave Request</DialogTitle>
@@ -501,8 +645,16 @@ export default function LeavePage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>Staff Member</Label>
-              <Select value={form.staffId} onValueChange={(v) => { setForm({ ...form, staffId: v }); setFormError(""); }}>
-                <SelectTrigger><SelectValue placeholder="Select staff" /></SelectTrigger>
+              <Select
+                value={form.staffId}
+                onValueChange={(v) => {
+                  setForm({ ...form, staffId: v });
+                  setFormError("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select staff" />
+                </SelectTrigger>
                 <SelectContent>
                   {staff.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
@@ -514,11 +666,18 @@ export default function LeavePage() {
             </div>
             <div>
               <Label>Leave Type</Label>
-              <Select value={form.leaveType} onValueChange={(v) => setForm({ ...form, leaveType: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={form.leaveType}
+                onValueChange={(v) => setForm({ ...form, leaveType: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {Object.entries(leaveTypeLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -529,7 +688,10 @@ export default function LeavePage() {
                 <Input
                   type="date"
                   value={form.startDate}
-                  onChange={(e) => { setForm({ ...form, startDate: e.target.value }); setFormError(""); }}
+                  onChange={(e) => {
+                    setForm({ ...form, startDate: e.target.value });
+                    setFormError("");
+                  }}
                   required
                 />
               </div>
@@ -538,7 +700,10 @@ export default function LeavePage() {
                 <Input
                   type="date"
                   value={form.endDate}
-                  onChange={(e) => { setForm({ ...form, endDate: e.target.value }); setFormError(""); }}
+                  onChange={(e) => {
+                    setForm({ ...form, endDate: e.target.value });
+                    setFormError("");
+                  }}
                   required
                 />
               </div>
@@ -555,7 +720,14 @@ export default function LeavePage() {
               <p className="text-xs text-destructive">{formError}</p>
             )}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setFormError(""); }}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setDialogOpen(false);
+                  setFormError("");
+                }}
+              >
                 Cancel
               </Button>
               <Button type="submit">Submit Request</Button>

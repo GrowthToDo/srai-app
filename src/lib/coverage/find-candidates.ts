@@ -1,5 +1,12 @@
 import { db } from "@/db";
-import { staff, assignment, shift, shiftDefinition, staffLeave, prnAvailability } from "@/db/schema";
+import {
+  staff,
+  assignment,
+  shift,
+  shiftDefinition,
+  staffLeave,
+  prnAvailability,
+} from "@/db/schema";
 import { eq, and, ne, gte, lte, or } from "drizzle-orm";
 import { addDays, parseISO, format } from "date-fns";
 import { weekBounds } from "@/lib/date/week";
@@ -58,7 +65,6 @@ interface VacancyContext {
   chargeRequired: boolean;
 }
 
-
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
@@ -72,7 +78,13 @@ interface VacancyContext {
  */
 export async function findCandidatesForShift(
   shiftId: string,
-  excludeStaffId?: string
+  excludeStaffId?: string,
+  // Default 3 keeps the manager-facing "top recommendations" contract every
+  // existing caller relies on. The nurse-facing open-shift board passes
+  // Infinity: ALL rule-eligible nurses may see and raise a hand for a vacancy
+  // (founder direction 2026-08-15) — top-3 is a phone-outreach concept, not a
+  // visibility one.
+  limit = 3,
 ): Promise<{
   candidates: CandidateRecommendation[];
   escalationStepsChecked: string[];
@@ -103,13 +115,23 @@ export async function findCandidatesForShift(
   const escalationStepsChecked: string[] = [];
 
   escalationStepsChecked.push("float");
-  allCandidates.push(...await findFloatCandidates(shiftRecord, excludeStaffId, vacancyContext));
+  allCandidates.push(
+    ...(await findFloatCandidates(shiftRecord, excludeStaffId, vacancyContext)),
+  );
 
   escalationStepsChecked.push("per_diem");
-  allCandidates.push(...await findPRNCandidates(shiftRecord, excludeStaffId, vacancyContext));
+  allCandidates.push(
+    ...(await findPRNCandidates(shiftRecord, excludeStaffId, vacancyContext)),
+  );
 
   escalationStepsChecked.push("overtime");
-  allCandidates.push(...await findOvertimeCandidates(shiftRecord, excludeStaffId, vacancyContext));
+  allCandidates.push(
+    ...(await findOvertimeCandidates(
+      shiftRecord,
+      excludeStaffId,
+      vacancyContext,
+    )),
+  );
 
   // Agency is a last-resort tier. If this is a charge nurse shift, agency
   // staff cannot be charge-qualified, so including them would surface the same
@@ -125,7 +147,11 @@ export async function findCandidatesForShift(
       icuCompetencyLevel: 0,
       isChargeNurseQualified: false,
       source: "agency",
-      reasons: ["External staffing agency", "Requires phone call to agency", "Higher cost option"],
+      reasons: [
+        "External staffing agency",
+        "Requires phone call to agency",
+        "Higher cost option",
+      ],
       score: 10,
       isOvertime: false,
       hoursThisWeek: 0,
@@ -148,7 +174,7 @@ export async function findCandidatesForShift(
       if (a.isOvertime !== b.isOvertime) return a.isOvertime ? 1 : -1;
       return b.score - a.score;
     })
-    .slice(0, 3);
+    .slice(0, Number.isFinite(limit) ? limit : allCandidates.length);
 
   return { candidates: sortedCandidates, escalationStepsChecked };
 }
@@ -157,8 +183,15 @@ export async function findCandidatesForShift(
 // Vacancy context
 // ---------------------------------------------------------------------------
 
-function buildVacancyContext(shiftId: string, excludeStaffId?: string): VacancyContext {
-  const defaults: VacancyContext = { requiredRoleRank: 0, calledOutLevel: 1, chargeRequired: false };
+function buildVacancyContext(
+  shiftId: string,
+  excludeStaffId?: string,
+): VacancyContext {
+  const defaults: VacancyContext = {
+    requiredRoleRank: 0,
+    calledOutLevel: 1,
+    chargeRequired: false,
+  };
   if (!excludeStaffId) return defaults;
 
   const originalStaff = db
@@ -171,7 +204,12 @@ function buildVacancyContext(shiftId: string, excludeStaffId?: string): VacancyC
   const originalAssignment = db
     .select({ isChargeNurse: assignment.isChargeNurse })
     .from(assignment)
-    .where(and(eq(assignment.shiftId, shiftId), eq(assignment.staffId, excludeStaffId)))
+    .where(
+      and(
+        eq(assignment.shiftId, shiftId),
+        eq(assignment.staffId, excludeStaffId),
+      ),
+    )
     .get();
 
   return {
@@ -210,10 +248,16 @@ function candidateScore(
   source: "float" | "per_diem" | "overtime" | "agency",
   hoursThisWeek: number,
   durationHours: number,
-  vacancyContext: VacancyContext
+  vacancyContext: VacancyContext,
 ): number {
-  const effectiveLevel = Math.min(candidateLevel, vacancyContext.calledOutLevel);
-  const overflowLevel = Math.max(0, candidateLevel - vacancyContext.calledOutLevel);
+  const effectiveLevel = Math.min(
+    candidateLevel,
+    vacancyContext.calledOutLevel,
+  );
+  const overflowLevel = Math.max(
+    0,
+    candidateLevel - vacancyContext.calledOutLevel,
+  );
   let score = effectiveLevel * 10 + overflowLevel * 2;
 
   score += SOURCE_BONUS[source] ?? 0;
@@ -233,7 +277,7 @@ function candidateScore(
 async function findFloatCandidates(
   shiftDetails: ShiftDetails,
   excludeStaffId: string | undefined,
-  vacancyContext: VacancyContext
+  vacancyContext: VacancyContext,
 ): Promise<CandidateRecommendation[]> {
   const candidates: CandidateRecommendation[] = [];
 
@@ -244,8 +288,8 @@ async function findFloatCandidates(
       and(
         eq(staff.employmentType, "float"),
         eq(staff.isActive, true),
-        excludeStaffId ? ne(staff.id, excludeStaffId) : undefined
-      )
+        excludeStaffId ? ne(staff.id, excludeStaffId) : undefined,
+      ),
     )
     .all();
 
@@ -253,7 +297,8 @@ async function findFloatCandidates(
     if ((ROLE_RANK[s.role] ?? 0) < vacancyContext.requiredRoleRank) continue;
 
     const isHomeUnit = s.homeUnit === shiftDetails.unit;
-    const isQualified = isHomeUnit || !!(s.crossTrainedUnits?.includes(shiftDetails.unit));
+    const isQualified =
+      isHomeUnit || !!s.crossTrainedUnits?.includes(shiftDetails.unit);
     if (!isQualified) continue;
 
     if (vacancyContext.chargeRequired && !s.isChargeNurseQualified) continue;
@@ -267,8 +312,10 @@ async function findFloatCandidates(
     } else {
       reasons.push(`Cross-trained for ${shiftDetails.unit}`);
     }
-    if (s.icuCompetencyLevel >= 3) reasons.push(`Competency Level ${s.icuCompetencyLevel}`);
-    if (vacancyContext.chargeRequired && s.isChargeNurseQualified) reasons.push("Charge nurse qualified");
+    if (s.icuCompetencyLevel >= 3)
+      reasons.push(`Competency Level ${s.icuCompetencyLevel}`);
+    if (vacancyContext.chargeRequired && s.isChargeNurseQualified)
+      reasons.push("Charge nurse qualified");
     if (availability.calloutWarning) reasons.push(availability.calloutWarning);
 
     const hoursThisWeek = availability.hoursThisWeek;
@@ -281,14 +328,26 @@ async function findFloatCandidates(
       source: "float",
       reasons,
       score: candidateScore(
-        s.icuCompetencyLevel, s.isChargeNurseQualified, isHomeUnit,
-        s.reliabilityRating, "float", hoursThisWeek, shiftDetails.durationHours, vacancyContext
+        s.icuCompetencyLevel,
+        s.isChargeNurseQualified,
+        isHomeUnit,
+        s.reliabilityRating,
+        "float",
+        hoursThisWeek,
+        shiftDetails.durationHours,
+        vacancyContext,
       ),
       isOvertime: hoursThisWeek + shiftDetails.durationHours > 40,
       hoursThisWeek,
       restHoursBefore: availability.restHoursBefore,
-      weekendsThisPeriod: countWeekendsInSchedulePeriod(s.id, shiftDetails.scheduleId),
-      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(s.id, shiftDetails.date),
+      weekendsThisPeriod: countWeekendsInSchedulePeriod(
+        s.id,
+        shiftDetails.scheduleId,
+      ),
+      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(
+        s.id,
+        shiftDetails.date,
+      ),
     });
   }
 
@@ -298,7 +357,7 @@ async function findFloatCandidates(
 async function findPRNCandidates(
   shiftDetails: ShiftDetails,
   excludeStaffId: string | undefined,
-  vacancyContext: VacancyContext
+  vacancyContext: VacancyContext,
 ): Promise<CandidateRecommendation[]> {
   const candidates: CandidateRecommendation[] = [];
 
@@ -309,8 +368,8 @@ async function findPRNCandidates(
       and(
         eq(staff.employmentType, "per_diem"),
         eq(staff.isActive, true),
-        excludeStaffId ? ne(staff.id, excludeStaffId) : undefined
-      )
+        excludeStaffId ? ne(staff.id, excludeStaffId) : undefined,
+      ),
     )
     .all();
 
@@ -318,7 +377,8 @@ async function findPRNCandidates(
     if ((ROLE_RANK[s.role] ?? 0) < vacancyContext.requiredRoleRank) continue;
 
     const isHomeUnit = s.homeUnit === shiftDetails.unit;
-    const isQualified = isHomeUnit || !!(s.crossTrainedUnits?.includes(shiftDetails.unit));
+    const isQualified =
+      isHomeUnit || !!s.crossTrainedUnits?.includes(shiftDetails.unit);
     if (!isQualified) continue;
 
     // PRN must have marked this date as available.
@@ -331,7 +391,7 @@ async function findPRNCandidates(
       .all();
     const availableSet = new Set<string>();
     for (const a of prnAvail) {
-      for (const d of ((a.availableDates as string[]) ?? [])) {
+      for (const d of (a.availableDates as string[]) ?? []) {
         availableSet.add(d);
       }
     }
@@ -348,8 +408,10 @@ async function findPRNCandidates(
     } else {
       reasons.push(`Cross-trained for ${shiftDetails.unit}`);
     }
-    if (s.reliabilityRating >= 4) reasons.push(`High reliability rating (${s.reliabilityRating}/5)`);
-    if (vacancyContext.chargeRequired && s.isChargeNurseQualified) reasons.push("Charge nurse qualified");
+    if (s.reliabilityRating >= 4)
+      reasons.push(`High reliability rating (${s.reliabilityRating}/5)`);
+    if (vacancyContext.chargeRequired && s.isChargeNurseQualified)
+      reasons.push("Charge nurse qualified");
     if (availability.calloutWarning) reasons.push(availability.calloutWarning);
 
     const hoursThisWeek = availability.hoursThisWeek;
@@ -362,14 +424,26 @@ async function findPRNCandidates(
       source: "per_diem",
       reasons,
       score: candidateScore(
-        s.icuCompetencyLevel, s.isChargeNurseQualified, isHomeUnit,
-        s.reliabilityRating, "per_diem", hoursThisWeek, shiftDetails.durationHours, vacancyContext
+        s.icuCompetencyLevel,
+        s.isChargeNurseQualified,
+        isHomeUnit,
+        s.reliabilityRating,
+        "per_diem",
+        hoursThisWeek,
+        shiftDetails.durationHours,
+        vacancyContext,
       ),
       isOvertime: false,
       hoursThisWeek,
       restHoursBefore: availability.restHoursBefore,
-      weekendsThisPeriod: countWeekendsInSchedulePeriod(s.id, shiftDetails.scheduleId),
-      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(s.id, shiftDetails.date),
+      weekendsThisPeriod: countWeekendsInSchedulePeriod(
+        s.id,
+        shiftDetails.scheduleId,
+      ),
+      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(
+        s.id,
+        shiftDetails.date,
+      ),
     });
   }
 
@@ -379,7 +453,7 @@ async function findPRNCandidates(
 async function findOvertimeCandidates(
   shiftDetails: ShiftDetails,
   excludeStaffId: string | undefined,
-  vacancyContext: VacancyContext
+  vacancyContext: VacancyContext,
 ): Promise<CandidateRecommendation[]> {
   const candidates: CandidateRecommendation[] = [];
 
@@ -390,11 +464,11 @@ async function findOvertimeCandidates(
       and(
         or(
           eq(staff.employmentType, "full_time"),
-          eq(staff.employmentType, "part_time")
+          eq(staff.employmentType, "part_time"),
         ),
         eq(staff.isActive, true),
-        excludeStaffId ? ne(staff.id, excludeStaffId) : undefined
-      )
+        excludeStaffId ? ne(staff.id, excludeStaffId) : undefined,
+      ),
     )
     .all();
 
@@ -402,7 +476,8 @@ async function findOvertimeCandidates(
     if ((ROLE_RANK[s.role] ?? 0) < vacancyContext.requiredRoleRank) continue;
 
     const isHomeUnit = s.homeUnit === shiftDetails.unit;
-    const isQualified = isHomeUnit || !!(s.crossTrainedUnits?.includes(shiftDetails.unit));
+    const isQualified =
+      isHomeUnit || !!s.crossTrainedUnits?.includes(shiftDetails.unit);
     if (!isQualified) continue;
 
     if (vacancyContext.chargeRequired && !s.isChargeNurseQualified) continue;
@@ -420,8 +495,10 @@ async function findOvertimeCandidates(
     } else {
       reasons.push(`Cross-trained for ${shiftDetails.unit}`);
     }
-    if (s.flexHoursYearToDate < 20) reasons.push("Low flex hours YTD (fair distribution)");
-    if (vacancyContext.chargeRequired && s.isChargeNurseQualified) reasons.push("Charge nurse qualified");
+    if (s.flexHoursYearToDate < 20)
+      reasons.push("Low flex hours YTD (fair distribution)");
+    if (vacancyContext.chargeRequired && s.isChargeNurseQualified)
+      reasons.push("Charge nurse qualified");
     if (availability.calloutWarning) reasons.push(availability.calloutWarning);
 
     candidates.push({
@@ -433,15 +510,27 @@ async function findOvertimeCandidates(
       source: "overtime",
       reasons,
       score: candidateScore(
-        s.icuCompetencyLevel, s.isChargeNurseQualified, isHomeUnit,
-        s.reliabilityRating, "overtime", hoursThisWeek, shiftDetails.durationHours, vacancyContext
+        s.icuCompetencyLevel,
+        s.isChargeNurseQualified,
+        isHomeUnit,
+        s.reliabilityRating,
+        "overtime",
+        hoursThisWeek,
+        shiftDetails.durationHours,
+        vacancyContext,
       ),
       isOvertime: wouldBeOvertime,
       hoursThisWeek,
       fteHoursPerWeek: s.fte * 40,
       restHoursBefore: availability.restHoursBefore,
-      weekendsThisPeriod: countWeekendsInSchedulePeriod(s.id, shiftDetails.scheduleId),
-      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(s.id, shiftDetails.date),
+      weekendsThisPeriod: countWeekendsInSchedulePeriod(
+        s.id,
+        shiftDetails.scheduleId,
+      ),
+      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(
+        s.id,
+        shiftDetails.date,
+      ),
     });
   }
 
@@ -463,7 +552,7 @@ interface AvailabilityResult {
 
 export async function checkStaffAvailability(
   staffId: string,
-  shiftDetails: ShiftDetails
+  shiftDetails: ShiftDetails,
 ): Promise<AvailabilityResult> {
   const shiftDate = parseISO(shiftDetails.date);
   // Monday–Sunday week (canonical, UTC-safe). weekStart/weekEnd are YYYY-MM-DD strings.
@@ -478,8 +567,8 @@ export async function checkStaffAvailability(
         eq(staffLeave.staffId, staffId),
         eq(staffLeave.status, "approved"),
         lte(staffLeave.startDate, shiftDetails.date),
-        gte(staffLeave.endDate, shiftDetails.date)
-      )
+        gte(staffLeave.endDate, shiftDetails.date),
+      ),
     )
     .all();
   if (leaveRecords.length > 0) {
@@ -502,18 +591,31 @@ export async function checkStaffAvailability(
       and(
         eq(assignment.staffId, staffId),
         eq(shift.date, shiftDetails.date),
-        ne(assignment.status, "cancelled")
-      )
+        ne(assignment.status, "cancelled"),
+      ),
     )
     .all();
 
   for (const existing of existingAssignments) {
-    if (shiftsOverlap(existing.startTime, existing.endTime, shiftDetails.startTime, shiftDetails.endTime)) {
-      return { available: false, hoursThisWeek: 0, reason: "Already assigned to overlapping shift" };
+    if (
+      shiftsOverlap(
+        existing.startTime,
+        existing.endTime,
+        shiftDetails.startTime,
+        shiftDetails.endTime,
+      )
+    ) {
+      return {
+        available: false,
+        hoursThisWeek: 0,
+        reason: "Already assigned to overlapping shift",
+      };
     }
     const gapMins = sameDayShiftGapMinutes(
-      existing.startTime, existing.endTime,
-      shiftDetails.startTime, shiftDetails.endTime
+      existing.startTime,
+      existing.endTime,
+      shiftDetails.startTime,
+      shiftDetails.endTime,
     );
     if (gapMins < 10 * 60) {
       return {
@@ -535,14 +637,21 @@ export async function checkStaffAvailability(
         eq(assignment.staffId, staffId),
         gte(shift.date, weekStart),
         lte(shift.date, weekEnd),
-        ne(assignment.status, "cancelled")
-      )
+        ne(assignment.status, "cancelled"),
+      ),
     )
     .all();
-  const hoursThisWeek = weekAssignments.reduce((sum, a) => sum + (a.durationHours || 0), 0);
+  const hoursThisWeek = weekAssignments.reduce(
+    (sum, a) => sum + (a.durationHours || 0),
+    0,
+  );
 
   if (hoursThisWeek + shiftDetails.durationHours > 60) {
-    return { available: false, hoursThisWeek, reason: "Would exceed 60 hours in 7 days" };
+    return {
+      available: false,
+      hoursThisWeek,
+      reason: "Would exceed 60 hours in 7 days",
+    };
   }
 
   // 3b. On-call limits — max 1 on-call shift per week; max 1 on-call weekend per month.
@@ -559,24 +668,35 @@ export async function checkStaffAvailability(
         gte(shift.date, weekStart),
         lte(shift.date, weekEnd),
         ne(assignment.status, "cancelled"),
-        ne(assignment.status, "called_out")
-      )
+        ne(assignment.status, "called_out"),
+      ),
     )
     .all();
   if (onCallThisWeek.length >= 1) {
-    return { available: false, hoursThisWeek, reason: "Already has an on-call shift this week (max 1/week)" };
+    return {
+      available: false,
+      hoursThisWeek,
+      reason: "Already has an on-call shift this week (max 1/week)",
+    };
   }
 
   // On-call weekend limit: max 1 per calendar month.
   const shiftDayOfWeek = shiftDate.getUTCDay();
   if (shiftDayOfWeek === 0 || shiftDayOfWeek === 6) {
-    const monthStart = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth() + 1, 0));
+    const monthStart = new Date(
+      Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth(), 1),
+    );
+    const monthEnd = new Date(
+      Date.UTC(shiftDate.getUTCFullYear(), shiftDate.getUTCMonth() + 1, 0),
+    );
     const onCallWeekendsThisMonth = db
       .select({ date: shift.date })
       .from(assignment)
       .innerJoin(shift, eq(assignment.shiftId, shift.id))
-      .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
+      .innerJoin(
+        shiftDefinition,
+        eq(shift.shiftDefinitionId, shiftDefinition.id),
+      )
       .where(
         and(
           eq(assignment.staffId, staffId),
@@ -584,8 +704,8 @@ export async function checkStaffAvailability(
           gte(shift.date, monthStart.toISOString().slice(0, 10)),
           lte(shift.date, monthEnd.toISOString().slice(0, 10)),
           ne(assignment.status, "cancelled"),
-          ne(assignment.status, "called_out")
-        )
+          ne(assignment.status, "called_out"),
+        ),
       )
       .all()
       .filter((r) => {
@@ -593,7 +713,11 @@ export async function checkStaffAvailability(
         return d === 0 || d === 6;
       });
     if (onCallWeekendsThisMonth.length >= 1) {
-      return { available: false, hoursThisWeek, reason: "Already has an on-call weekend this month (max 1/month)" };
+      return {
+        available: false,
+        hoursThisWeek,
+        reason: "Already has an on-call weekend this month (max 1/month)",
+      };
     }
   }
 
@@ -624,17 +748,21 @@ export async function checkStaffAvailability(
       and(
         eq(assignment.staffId, staffId),
         ne(assignment.status, "cancelled"),
-        or(eq(shift.date, prevDate), eq(shift.date, nextDate))
-      )
+        or(eq(shift.date, prevDate), eq(shift.date, nextDate)),
+      ),
     )
     .all();
 
-  const toMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m ?? 0); };
+  const toMins = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + (m ?? 0);
+  };
   const newStartMins = toMins(shiftDetails.startTime);
   // Overnight new shift: end is past midnight, so express as minutes from shiftDate midnight
-  const newEndMins = shiftDetails.endTime <= shiftDetails.startTime
-    ? toMins(shiftDetails.endTime) + 24 * 60
-    : toMins(shiftDetails.endTime);
+  const newEndMins =
+    shiftDetails.endTime <= shiftDetails.startTime
+      ? toMins(shiftDetails.endTime) + 24 * 60
+      : toMins(shiftDetails.endTime);
 
   let restHoursBefore: number | undefined;
 
@@ -644,8 +772,8 @@ export async function checkStaffAvailability(
       const adjEndMins = toMins(adj.endTime);
       const adjIsOvernight = adj.endTime <= adj.startTime;
       const gapMins = adjIsOvernight
-        ? newStartMins - adjEndMins              // overnight D-1 ends on D — gap is simple subtraction
-        : 24 * 60 - adjEndMins + newStartMins;  // regular D-1 ends on D-1 — gap spans midnight
+        ? newStartMins - adjEndMins // overnight D-1 ends on D — gap is simple subtraction
+        : 24 * 60 - adjEndMins + newStartMins; // regular D-1 ends on D-1 — gap spans midnight
       if (gapMins < 10 * 60) {
         return {
           available: false,
@@ -687,8 +815,8 @@ export async function checkStaffAvailability(
         gte(shift.date, weekStart),
         lte(shift.date, weekEnd),
         ne(assignment.status, "cancelled"),
-        ne(assignment.status, "called_out")
-      )
+        ne(assignment.status, "called_out"),
+      ),
     )
     .all();
   const calloutWarning =
@@ -707,7 +835,7 @@ function shiftsOverlap(
   start1: string,
   end1: string,
   start2: string,
-  end2: string
+  end2: string,
 ): boolean {
   const toMinutes = (time: string) => {
     const [h, m] = time.split(":").map(Number);
@@ -730,10 +858,15 @@ function shiftsOverlap(
  * Example: Day 07:00–19:00 then Night 19:00–07:00 → gap = 0 min.
  */
 function sameDayShiftGapMinutes(
-  start1: string, end1: string,
-  start2: string, end2: string
+  start1: string,
+  end1: string,
+  start2: string,
+  end2: string,
 ): number {
-  const toMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+  const toMins = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + (m || 0);
+  };
   const s1 = toMins(start1);
   let e1 = toMins(end1);
   const s2 = toMins(start2);

@@ -31,8 +31,12 @@ import { Input } from "@/components/ui/input";
 import { GuideNudge } from "@/components/ui/guide-nudge";
 import { Label } from "@/components/ui/label";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
-import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import {
+  isPracticeText,
+  stripPracticeMarker,
+} from "@/lib/onboarding/practice-marker";
 import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface EscalationStep {
   step: string;
@@ -137,14 +141,21 @@ export default function CalloutsPage() {
     (generatedCalloutId !== null && c.id === generatedCalloutId);
   const [callouts, setCallouts] = useState<CalloutRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Guard: acting on a REAL callout while the tutorial is active asks first.
   const [confirmRealOpen, setConfirmRealOpen] = useState(false);
-  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
+  const [pendingRealAction, setPendingRealAction] = useState<
+    (() => void) | null
+  >(null);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [escalationDialogOpen, setEscalationDialogOpen] = useState(false);
-  const [detailCallout, setDetailCallout] = useState<CalloutRecord | null>(null);
-  const [escalationOptions, setEscalationOptions] = useState<ReplacementCandidate[]>([]);
+  const [detailCallout, setDetailCallout] = useState<CalloutRecord | null>(
+    null,
+  );
+  const [escalationOptions, setEscalationOptions] = useState<
+    ReplacementCandidate[]
+  >([]);
   const [chargeNurseRequired, setChargeNurseRequired] = useState(false);
   const [activeCalloutId, setActiveCalloutId] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<ScheduleInfo[]>([]);
@@ -159,21 +170,31 @@ export default function CalloutsPage() {
   const [calloutDetail, setCalloutDetail] = useState("");
 
   const fetchCallouts = useCallback(async () => {
-    const res = await fetch("/api/callouts");
-    setCallouts(await res.json());
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setCallouts(await fetchJson<CalloutRecord[]>("/api/callouts"));
+    } catch {
+      setLoadError(
+        "Couldn't load callouts. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     fetchCallouts();
-    fetch("/api/schedules").then((r) => r.json()).then(async (scheds) => {
-      const detailed = [];
-      for (const s of scheds) {
-        const res = await fetch(`/api/schedules/${s.id}`);
-        detailed.push(await res.json());
-      }
-      setSchedules(detailed);
-    });
+    fetch("/api/schedules")
+      .then((r) => r.json())
+      .then(async (scheds) => {
+        const detailed = [];
+        for (const s of scheds) {
+          const res = await fetch(`/api/schedules/${s.id}`);
+          detailed.push(await res.json());
+        }
+        setSchedules(detailed);
+      });
   }, [fetchCallouts]);
 
   async function handleLogCallout() {
@@ -195,7 +216,11 @@ export default function CalloutsPage() {
     setEscalationOptions(data.escalationOptions);
     setChargeNurseRequired(data.chargeNurseRequired ?? false);
     setEscalationDialogOpen(true);
-    addToast({ title: "Callout logged", description: `${reasonLabels[calloutReason] || calloutReason} — finding replacement candidates`, variant: "default" });
+    addToast({
+      title: "Callout logged",
+      description: `${reasonLabels[calloutReason] || calloutReason} — finding replacement candidates`,
+      variant: "default",
+    });
     window.dispatchEvent(new Event("onboarding-refresh"));
     fetchCallouts();
   }
@@ -215,11 +240,19 @@ export default function CalloutsPage() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      addToast({ title: "Failed to assign replacement", description: data.error ?? "Unknown error", variant: "error" });
+      addToast({
+        title: "Failed to assign replacement",
+        description: data.error ?? "Unknown error",
+        variant: "error",
+      });
       return;
     }
 
-    addToast({ title: "Replacement assigned", description: `${candidate.firstName} ${candidate.lastName} (${sourceLabels[candidate.source] || candidate.source})`, variant: "success" });
+    addToast({
+      title: "Replacement assigned",
+      description: `${candidate.firstName} ${candidate.lastName} (${sourceLabels[candidate.source] || candidate.source})`,
+      variant: "success",
+    });
     setEscalationDialogOpen(false);
     setActiveCalloutId(null);
     setChargeNurseRequired(false);
@@ -238,7 +271,7 @@ export default function CalloutsPage() {
 
   // Get assignments from selected schedule for the log dialog
   const allScheduleAssignments = selectedScheduleId
-    ? schedules
+    ? (schedules
         .find((s) => s.id === selectedScheduleId)
         ?.shifts.flatMap((sh) =>
           sh.assignments.map((a) => ({
@@ -246,8 +279,8 @@ export default function CalloutsPage() {
             shiftId: sh.id,
             shiftDate: sh.date,
             shiftName: sh.name,
-          }))
-        ) ?? []
+          })),
+        ) ?? [])
     : [];
 
   // Unique staff for the filter dropdown
@@ -256,8 +289,8 @@ export default function CalloutsPage() {
       allScheduleAssignments.map((a) => [
         a.staffId,
         { staffId: a.staffId, name: `${a.staffFirstName} ${a.staffLastName}` },
-      ])
-    ).values()
+      ]),
+    ).values(),
   ).sort((a, b) => a.name.localeCompare(b.name));
 
   // Assignments filtered to the selected staff member
@@ -296,15 +329,37 @@ export default function CalloutsPage() {
         <CardContent>
           {loading ? (
             <p className="text-muted-foreground">Loading...</p>
+          ) : loadError ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-destructive">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={fetchCallouts}>
+                Try again
+              </Button>
+            </div>
           ) : callouts.length === 0 ? (
             <div className="rounded-lg border-2 border-dashed border-muted p-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-                  <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="22" x2="2" y1="2" y2="22"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-muted-foreground"
+                >
+                  <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+                  <line x1="22" x2="2" y1="2" y2="22" />
                 </svg>
               </div>
               <p className="font-medium">No callouts recorded</p>
-              <p className="mt-1 text-sm text-muted-foreground">When a nurse can&apos;t make a scheduled shift, log it here — you&apos;ll get ranked replacement candidates.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                When a nurse can&apos;t make a scheduled shift, log it here —
+                you&apos;ll get ranked replacement candidates.
+              </p>
             </div>
           ) : (
             <Table>
@@ -323,82 +378,96 @@ export default function CalloutsPage() {
                 {callouts.map((c) => {
                   const isPractice = isPracticeCallout(c);
                   return (
-                  <TableRow
-                    key={c.id}
-                    className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
-                  >
-                    <TableCell className="font-medium">
-                      <span className="inline-flex items-center gap-2">
-                        {c.staffFirstName} {c.staffLastName}
-                        {isPractice && (
-                          <Badge variant="default" className="text-xs">Practice</Badge>
-                        )}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {c.shiftDate
-                        ? new Date(c.shiftDate).toLocaleDateString()
-                        : "—"}
-                      {c.shiftName ? ` · ${c.shiftName}` : ""}
-                    </TableCell>
-                    <TableCell>
-                      {reasonLabels[c.reason] ?? c.reason}
-                      {c.reasonDetail && stripPracticeMarker(c.reasonDetail) && (
-                        <p className="text-xs text-muted-foreground">{stripPracticeMarker(c.reasonDetail)}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(c.calledOutAt).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      {c.replacementFirstName
-                        ? `${c.replacementFirstName} ${c.replacementLastName}`
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {c.replacementSource
-                        ? sourceLabels[c.replacementSource] ?? c.replacementSource
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={
-                            c.status === "filled"
-                              ? "default"
-                              : c.status === "open"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                        >
-                          {c.status}
-                        </Badge>
-                        {c.status === "open" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => guardRealAction(c, () => findReplacementForCallout(c.id))}
+                    <TableRow
+                      key={c.id}
+                      className={
+                        isPractice
+                          ? "bg-amber-50 dark:bg-amber-950/20"
+                          : undefined
+                      }
+                    >
+                      <TableCell className="font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          {c.staffFirstName} {c.staffLastName}
+                          {isPractice && (
+                            <Badge variant="default" className="text-xs">
+                              Practice
+                            </Badge>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {c.shiftDate
+                          ? new Date(c.shiftDate).toLocaleDateString()
+                          : "—"}
+                        {c.shiftName ? ` · ${c.shiftName}` : ""}
+                      </TableCell>
+                      <TableCell>
+                        {reasonLabels[c.reason] ?? c.reason}
+                        {c.reasonDetail &&
+                          stripPracticeMarker(c.reasonDetail) && (
+                            <p className="text-xs text-muted-foreground">
+                              {stripPracticeMarker(c.reasonDetail)}
+                            </p>
+                          )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(c.calledOutAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        {c.replacementFirstName
+                          ? `${c.replacementFirstName} ${c.replacementLastName}`
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {c.replacementSource
+                          ? (sourceLabels[c.replacementSource] ??
+                            c.replacementSource)
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={
+                              c.status === "filled"
+                                ? "default"
+                                : c.status === "open"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
                           >
-                            Find Replacement
-                          </Button>
-                        )}
-                        {c.status !== "open" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setDetailCallout(c)}
-                          >
-                            View
-                          </Button>
-                        )}
-                        <EntityHistoryDialog
-                          entityId={c.id}
-                          entityType="callout"
-                          title="Callout History"
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                            {c.status}
+                          </Badge>
+                          {c.status === "open" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                guardRealAction(c, () =>
+                                  findReplacementForCallout(c.id),
+                                )
+                              }
+                            >
+                              Find Replacement
+                            </Button>
+                          )}
+                          {c.status !== "open" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setDetailCallout(c)}
+                            >
+                              View
+                            </Button>
+                          )}
+                          <EntityHistoryDialog
+                            entityId={c.id}
+                            entityType="callout"
+                            title="Callout History"
+                          />
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
               </TableBody>
@@ -408,7 +477,12 @@ export default function CalloutsPage() {
       </Card>
 
       {/* Callout Detail Dialog */}
-      <Dialog open={!!detailCallout} onOpenChange={(open) => { if (!open) setDetailCallout(null); }}>
+      <Dialog
+        open={!!detailCallout}
+        onOpenChange={(open) => {
+          if (!open) setDetailCallout(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Callout Detail</DialogTitle>
@@ -417,81 +491,122 @@ export default function CalloutsPage() {
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <span className="font-medium text-muted-foreground">Staff</span>
-                <span>{detailCallout.staffFirstName} {detailCallout.staffLastName}</span>
+                <span>
+                  {detailCallout.staffFirstName} {detailCallout.staffLastName}
+                </span>
 
                 <span className="font-medium text-muted-foreground">Shift</span>
                 <span>
                   {detailCallout.shiftDate
                     ? new Date(detailCallout.shiftDate).toLocaleDateString()
                     : "—"}
-                  {detailCallout.shiftName ? ` — ${detailCallout.shiftName}` : ""}
+                  {detailCallout.shiftName
+                    ? ` — ${detailCallout.shiftName}`
+                    : ""}
                 </span>
 
-                <span className="font-medium text-muted-foreground">Reason</span>
+                <span className="font-medium text-muted-foreground">
+                  Reason
+                </span>
                 <span>
                   {reasonLabels[detailCallout.reason] ?? detailCallout.reason}
-                  {detailCallout.reasonDetail && stripPracticeMarker(detailCallout.reasonDetail) && (
-                    <span className="block text-muted-foreground">{stripPracticeMarker(detailCallout.reasonDetail)}</span>
-                  )}
+                  {detailCallout.reasonDetail &&
+                    stripPracticeMarker(detailCallout.reasonDetail) && (
+                      <span className="block text-muted-foreground">
+                        {stripPracticeMarker(detailCallout.reasonDetail)}
+                      </span>
+                    )}
                 </span>
 
-                <span className="font-medium text-muted-foreground">Called Out</span>
-                <span>{new Date(detailCallout.calledOutAt).toLocaleString()}</span>
+                <span className="font-medium text-muted-foreground">
+                  Called Out
+                </span>
+                <span>
+                  {new Date(detailCallout.calledOutAt).toLocaleString()}
+                </span>
 
-                <span className="font-medium text-muted-foreground">Replacement</span>
+                <span className="font-medium text-muted-foreground">
+                  Replacement
+                </span>
                 <span>
                   {detailCallout.replacementFirstName
                     ? `${detailCallout.replacementFirstName} ${detailCallout.replacementLastName}`
                     : "—"}
                 </span>
 
-                <span className="font-medium text-muted-foreground">Source</span>
+                <span className="font-medium text-muted-foreground">
+                  Source
+                </span>
                 <span>
                   {detailCallout.replacementSource
-                    ? sourceLabels[detailCallout.replacementSource] ?? detailCallout.replacementSource
+                    ? (sourceLabels[detailCallout.replacementSource] ??
+                      detailCallout.replacementSource)
                     : "—"}
                 </span>
 
                 {detailCallout.resolvedAt && (
                   <>
-                    <span className="font-medium text-muted-foreground">Resolved</span>
-                    <span>{new Date(detailCallout.resolvedAt).toLocaleString()}</span>
+                    <span className="font-medium text-muted-foreground">
+                      Resolved
+                    </span>
+                    <span>
+                      {new Date(detailCallout.resolvedAt).toLocaleString()}
+                    </span>
                   </>
                 )}
 
                 {detailCallout.resolvedBy && (
                   <>
-                    <span className="font-medium text-muted-foreground">Resolved By</span>
+                    <span className="font-medium text-muted-foreground">
+                      Resolved By
+                    </span>
                     <span>{detailCallout.resolvedBy}</span>
                   </>
                 )}
               </div>
 
-              {detailCallout.escalationStepsTaken && detailCallout.escalationStepsTaken.length > 0 && (
-                <div>
-                  <p className="mb-1 font-medium text-muted-foreground">Escalation Steps</p>
-                  <ul className="space-y-1 rounded-md border p-2">
-                    {detailCallout.escalationStepsTaken.map((step, i) => (
-                      <li key={i} className="flex items-center justify-between text-xs">
-                        <span>{step.step}</span>
-                        <Badge variant={step.result === "filled" ? "default" : "secondary"} className="text-[10px]">
-                          {step.result}
-                        </Badge>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {detailCallout.escalationStepsTaken &&
+                detailCallout.escalationStepsTaken.length > 0 && (
+                  <div>
+                    <p className="mb-1 font-medium text-muted-foreground">
+                      Escalation Steps
+                    </p>
+                    <ul className="space-y-1 rounded-md border p-2">
+                      {detailCallout.escalationStepsTaken.map((step, i) => (
+                        <li
+                          key={i}
+                          className="flex items-center justify-between text-xs"
+                        >
+                          <span>{step.step}</span>
+                          <Badge
+                            variant={
+                              step.result === "filled" ? "default" : "secondary"
+                            }
+                            className="text-[10px]"
+                          >
+                            {step.result}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
             </div>
           )}
         </DialogContent>
       </Dialog>
 
       {/* Log Callout Dialog */}
-      <Dialog open={logDialogOpen} onOpenChange={(open) => {
-        setLogDialogOpen(open);
-        if (!open) { setStaffFilter(""); setSelectedAssignment(null); }
-      }}>
+      <Dialog
+        open={logDialogOpen}
+        onOpenChange={(open) => {
+          setLogDialogOpen(open);
+          if (!open) {
+            setStaffFilter("");
+            setSelectedAssignment(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Log a Callout</DialogTitle>
@@ -507,10 +622,14 @@ export default function CalloutsPage() {
                   setSelectedAssignment(null);
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="Select schedule" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select schedule" />
+                </SelectTrigger>
                 <SelectContent>
                   {schedules.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -526,10 +645,14 @@ export default function CalloutsPage() {
                     setSelectedAssignment(null);
                   }}
                 >
-                  <SelectTrigger><SelectValue placeholder="Select staff member" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select staff member" />
+                  </SelectTrigger>
                   <SelectContent>
                     {staffInSchedule.map((s) => (
-                      <SelectItem key={s.staffId} value={s.staffId}>{s.name}</SelectItem>
+                      <SelectItem key={s.staffId} value={s.staffId}>
+                        {s.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -552,7 +675,9 @@ export default function CalloutsPage() {
                     }
                   }}
                 >
-                  <SelectTrigger><SelectValue placeholder="Select shift" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select shift" />
+                  </SelectTrigger>
                   <SelectContent>
                     {scheduleAssignments.map((a) => (
                       <SelectItem key={a.id} value={a.id}>
@@ -567,10 +692,14 @@ export default function CalloutsPage() {
             <div>
               <Label>Reason</Label>
               <Select value={calloutReason} onValueChange={setCalloutReason}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="sick">Sick</SelectItem>
-                  <SelectItem value="family_emergency">Family Emergency</SelectItem>
+                  <SelectItem value="family_emergency">
+                    Family Emergency
+                  </SelectItem>
                   <SelectItem value="personal">Personal</SelectItem>
                   <SelectItem value="no_show">No Show</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
@@ -600,7 +729,10 @@ export default function CalloutsPage() {
       </Dialog>
 
       {/* Escalation Options Dialog */}
-      <Dialog open={escalationDialogOpen} onOpenChange={setEscalationDialogOpen}>
+      <Dialog
+        open={escalationDialogOpen}
+        onOpenChange={setEscalationDialogOpen}
+      >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Replacement Candidates</DialogTitle>
@@ -609,10 +741,16 @@ export default function CalloutsPage() {
           {/* Charge nurse warning banner */}
           {chargeNurseRequired && (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              <span className="font-medium">⚠️ Original nurse held the charge role.</span> Only Level 4+ charge-qualified staff are eligible.
-              {escalationOptions.filter((x) => x.isEligible && x.isChargeNurseQualified).length === 0 && (
+              <span className="font-medium">
+                ⚠️ Original nurse held the charge role.
+              </span>{" "}
+              Only Level 4+ charge-qualified staff are eligible.
+              {escalationOptions.filter(
+                (x) => x.isEligible && x.isChargeNurseQualified,
+              ).length === 0 && (
                 <span className="mt-0.5 block font-medium">
-                  No charge-qualified candidates available — escalate to agency or reassign charge manually.
+                  No charge-qualified candidates available — escalate to agency
+                  or reassign charge manually.
                 </span>
               )}
             </div>
@@ -624,137 +762,175 @@ export default function CalloutsPage() {
               // and available) is the recommended pick. Mark it so both this list
               // and the open-shifts list present their #1 the same way.
               const bestMatchStaffId = escalationOptions.find(
-                (x) => x.isEligible && x.isAvailable
+                (x) => x.isEligible && x.isAvailable,
               )?.staffId;
               return escalationOptions.map((c, idx) => {
-              const eligibleCount = escalationOptions.filter((x) => x.isEligible).length;
-              const showDivider = !c.isEligible && idx > 0 && escalationOptions[idx - 1].isEligible;
-              const isBestMatch = c.staffId === bestMatchStaffId;
-              return (
-                <div key={c.staffId}>
-                  {showDivider && (
-                    <p className="py-1 text-xs font-medium text-muted-foreground">
-                      {eligibleCount === 0 ? "No eligible candidates" : "Not eligible"}
-                    </p>
-                  )}
-                  <div
-                    className={`rounded-md border px-3 py-2 ${
-                      !c.isEligible
-                        ? "border-red-200 bg-red-50 opacity-70"
-                        : !c.isAvailable
-                        ? "opacity-60"
-                        : ""
-                    }`}
-                  >
-                    {/* Name row */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-sm font-medium">
-                          {c.firstName} {c.lastName}
-                        </span>
-                        {isBestMatch && (
-                          <Badge className="text-xs">Best match</Badge>
-                        )}
-                        <Badge variant="secondary" className="text-xs">{c.role}</Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {sourceLabels[c.source] ?? c.source}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          Lv {c.icuCompetencyLevel}/5
-                        </span>
-                        {c.hoursThisWeek > 0 && (
-                          <Badge
-                            className={`text-[10px] px-1 py-0 ${
-                              c.wouldBeOvertime
-                                ? "bg-orange-500 text-white"
-                                : "bg-slate-200 text-slate-800"
-                            }`}
-                          >
-                            {c.hoursThisWeek}h{c.wouldBeOvertime ? " OT" : " this wk"}
-                          </Badge>
-                        )}
-                        {c.isEligible && !c.isAvailable && (
-                          <span className="text-xs text-orange-500">Busy</span>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        disabled={!c.isAvailable || !c.isEligible}
-                        onClick={() => handleFillCallout(c)}
-                        className="ml-2 shrink-0"
-                      >
-                        Assign
-                      </Button>
-                    </div>
-
-                    {/* Pros */}
-                    {c.isEligible && c.reasons.length > 0 && (
-                      <ul className="mt-1.5 space-y-0.5 pl-1">
-                        {c.reasons.map((r, i) => (
-                          <li key={i} className="flex items-start gap-1 text-xs text-muted-foreground">
-                            <span className="mt-px text-green-600 font-medium shrink-0">✓</span>
-                            {r}
-                          </li>
-                        ))}
-                      </ul>
+                const eligibleCount = escalationOptions.filter(
+                  (x) => x.isEligible,
+                ).length;
+                const showDivider =
+                  !c.isEligible &&
+                  idx > 0 &&
+                  escalationOptions[idx - 1].isEligible;
+                const isBestMatch = c.staffId === bestMatchStaffId;
+                return (
+                  <div key={c.staffId}>
+                    {showDivider && (
+                      <p className="py-1 text-xs font-medium text-muted-foreground">
+                        {eligibleCount === 0
+                          ? "No eligible candidates"
+                          : "Not eligible"}
+                      </p>
                     )}
+                    <div
+                      className={`rounded-md border px-3 py-2 ${
+                        !c.isEligible
+                          ? "border-red-200 bg-red-50 opacity-70"
+                          : !c.isAvailable
+                            ? "opacity-60"
+                            : ""
+                      }`}
+                    >
+                      {/* Name row */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-sm font-medium">
+                            {c.firstName} {c.lastName}
+                          </span>
+                          {isBestMatch && (
+                            <Badge className="text-xs">Best match</Badge>
+                          )}
+                          <Badge variant="secondary" className="text-xs">
+                            {c.role}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {sourceLabels[c.source] ?? c.source}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            Lv {c.icuCompetencyLevel}/5
+                          </span>
+                          {c.hoursThisWeek > 0 && (
+                            <Badge
+                              className={`text-[10px] px-1 py-0 ${
+                                c.wouldBeOvertime
+                                  ? "bg-orange-500 text-white"
+                                  : "bg-slate-200 text-slate-800"
+                              }`}
+                            >
+                              {c.hoursThisWeek}h
+                              {c.wouldBeOvertime ? " OT" : " this wk"}
+                            </Badge>
+                          )}
+                          {c.isEligible && !c.isAvailable && (
+                            <span className="text-xs text-orange-500">
+                              Busy
+                            </span>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          disabled={!c.isAvailable || !c.isEligible}
+                          onClick={() => handleFillCallout(c)}
+                          className="ml-2 shrink-0"
+                        >
+                          Assign
+                        </Button>
+                      </div>
 
-                    {/* Cons (eligible candidates) */}
-                    {c.isEligible && (() => {
-                      const cons: { text: string; red?: boolean }[] = [];
-                      if (c.wouldBeOvertime)
-                        cons.push({ text: `Overtime — ${c.hoursThisWeek}h this week (OT pay applies)` });
-                      if ((c.weekendsThisPeriod ?? 0) >= 3)
-                        cons.push({ text: `${c.weekendsThisPeriod} weekends already worked this period` });
-                      if ((c.consecutiveDaysBeforeShift ?? 0) >= 4)
-                        cons.push({ text: `${c.consecutiveDaysBeforeShift} consecutive days — this would be day ${(c.consecutiveDaysBeforeShift ?? 0) + 1}` });
-                      if (chargeNurseRequired && !c.isChargeNurseQualified)
-                        cons.push({ text: "Not charge nurse qualified — hard rule violation", red: true });
-                      if (cons.length === 0) return null;
-                      return (
-                        <ul className="mt-1 space-y-0.5 pl-1">
-                          {cons.map((con, i) => (
-                            <li key={i} className={`flex items-start gap-1 text-xs ${con.red ? "text-red-600" : "text-amber-600"}`}>
-                              <span className="mt-px shrink-0">✗</span>
-                              {con.text}
+                      {/* Pros */}
+                      {c.isEligible && c.reasons.length > 0 && (
+                        <ul className="mt-1.5 space-y-0.5 pl-1">
+                          {c.reasons.map((r, i) => (
+                            <li
+                              key={i}
+                              className="flex items-start gap-1 text-xs text-muted-foreground"
+                            >
+                              <span className="mt-px text-green-600 font-medium shrink-0">
+                                ✓
+                              </span>
+                              {r}
                             </li>
                           ))}
                         </ul>
-                      );
-                    })()}
+                      )}
 
-                    {/* Rest hours before shift */}
-                    {c.isEligible && (
-                      <p className={`mt-1 pl-1 text-xs ${
-                        c.restHoursBefore !== undefined && c.restHoursBefore < 12
-                          ? "text-amber-600"
-                          : "text-muted-foreground"
-                      }`}>
-                        · Rest before shift:{" "}
-                        {c.restHoursBefore !== undefined
-                          ? `${Math.round(c.restHoursBefore)}h${c.restHoursBefore < 12 ? " — short turnaround" : ""}`
-                          : "24h+"}
-                      </p>
-                    )}
+                      {/* Cons (eligible candidates) */}
+                      {c.isEligible &&
+                        (() => {
+                          const cons: { text: string; red?: boolean }[] = [];
+                          if (c.wouldBeOvertime)
+                            cons.push({
+                              text: `Overtime — ${c.hoursThisWeek}h this week (OT pay applies)`,
+                            });
+                          if ((c.weekendsThisPeriod ?? 0) >= 3)
+                            cons.push({
+                              text: `${c.weekendsThisPeriod} weekends already worked this period`,
+                            });
+                          if ((c.consecutiveDaysBeforeShift ?? 0) >= 4)
+                            cons.push({
+                              text: `${c.consecutiveDaysBeforeShift} consecutive days — this would be day ${(c.consecutiveDaysBeforeShift ?? 0) + 1}`,
+                            });
+                          if (chargeNurseRequired && !c.isChargeNurseQualified)
+                            cons.push({
+                              text: "Not charge nurse qualified — hard rule violation",
+                              red: true,
+                            });
+                          if (cons.length === 0) return null;
+                          return (
+                            <ul className="mt-1 space-y-0.5 pl-1">
+                              {cons.map((con, i) => (
+                                <li
+                                  key={i}
+                                  className={`flex items-start gap-1 text-xs ${con.red ? "text-red-600" : "text-amber-600"}`}
+                                >
+                                  <span className="mt-px shrink-0">✗</span>
+                                  {con.text}
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        })()}
 
-                    {/* Ineligibility reasons */}
-                    {!c.isEligible && c.ineligibilityReasons.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 pl-1">
-                        {c.ineligibilityReasons.map((r, i) => (
-                          <li key={i} className="flex items-start gap-1 text-xs text-red-600">
-                            <span className="mt-px shrink-0">✗</span>
-                            {r}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                      {/* Rest hours before shift */}
+                      {c.isEligible && (
+                        <p
+                          className={`mt-1 pl-1 text-xs ${
+                            c.restHoursBefore !== undefined &&
+                            c.restHoursBefore < 12
+                              ? "text-amber-600"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          · Rest before shift:{" "}
+                          {c.restHoursBefore !== undefined
+                            ? `${Math.round(c.restHoursBefore)}h${c.restHoursBefore < 12 ? " — short turnaround" : ""}`
+                            : "24h+"}
+                        </p>
+                      )}
+
+                      {/* Ineligibility reasons */}
+                      {!c.isEligible && c.ineligibilityReasons.length > 0 && (
+                        <ul className="mt-1 space-y-0.5 pl-1">
+                          {c.ineligibilityReasons.map((r, i) => (
+                            <li
+                              key={i}
+                              className="flex items-start gap-1 text-xs text-red-600"
+                            >
+                              <span className="mt-px shrink-0">✗</span>
+                              {r}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
+                );
               });
             })()}
             {escalationOptions.length === 0 && (
-              <p className="text-sm text-muted-foreground">No candidates available.</p>
+              <p className="text-sm text-muted-foreground">
+                No candidates available.
+              </p>
             )}
           </div>
         </DialogContent>

@@ -34,6 +34,15 @@ Hard rules (violating any of these makes your work unusable):
    session's commits appear), STOP and report — do not "fix" history. A
    sibling session once soft-reset a teammate's landed commit; recovery cost
    more than the task.
+10. NEVER touch uncommitted changes you did not author: no `git stash`, no
+    `git checkout --`/`git restore` on files outside your assignment, no
+    cleaning the tree to "isolate your diff". The working tree may hold a
+    sibling's uncommitted work AT ALL TIMES. If `git status` shows dirt you
+    didn't create, report your own files only and leave the rest exactly as
+    found. A worker once ran `git stash` to get a clean diff of its own
+    edits and silently shelved the orchestrator's in-flight feature work
+    (2026-08-15) — the second sibling-collision incident; rule 9 alone did
+    not cover it.
 
 Report format: what you changed and why (2-4 sentences), the verbatim
 `git diff --stat`, the verify gate result line, any deviations from spec.

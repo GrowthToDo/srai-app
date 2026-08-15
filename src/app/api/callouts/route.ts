@@ -1,5 +1,11 @@
 import { db } from "@/db";
-import { callout, assignment, staff, shift, shiftDefinition } from "@/db/schema";
+import {
+  callout,
+  assignment,
+  staff,
+  shift,
+  shiftDefinition,
+} from "@/db/schema";
 import { eq, aliasedTable } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { logAuditEvent } from "@/lib/audit/logger";
@@ -32,7 +38,10 @@ export async function GET() {
     })
     .from(callout)
     .innerJoin(staff, eq(callout.staffId, staff.id))
-    .leftJoin(replacementStaffAlias, eq(callout.replacementStaffId, replacementStaffAlias.id))
+    .leftJoin(
+      replacementStaffAlias,
+      eq(callout.replacementStaffId, replacementStaffAlias.id),
+    )
     .innerJoin(shift, eq(callout.shiftId, shift.id))
     .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
     .orderBy(callout.createdAt)
@@ -44,22 +53,20 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = await request.json();
 
-  // Phase 1 ownership: a nurse may only call out of THEIR OWN assignment. Verify
-  // the target assignment belongs to them before doing anything. Managers (or
-  // AUTH_ENABLED off) skip this check.
-  // PHASE 2 TODO: nurse-facing callout list filtering (a nurse should only see
-  // their own callouts); the GET handler still returns all callouts.
+  // Nurses cannot write callouts at all (founder direction 2026-08-15): every
+  // nurse-initiated absence is a TIME-OFF REQUEST that must pass the manager's
+  // Leave queue — nothing a nurse submits may flip an assignment to called_out
+  // without approval. Logging a callout is a manager action (e.g. recording a
+  // phone call-in). The nurse portal now submits to /api/staff-leave instead.
   const role = request.headers.get("x-user-role");
-  const callerStaffId = request.headers.get("x-staff-id");
   if (role === "nurse") {
-    const targetAssignment = db
-      .select({ staffId: assignment.staffId })
-      .from(assignment)
-      .where(eq(assignment.id, body.assignmentId))
-      .get();
-    if (!targetAssignment || targetAssignment.staffId !== callerStaffId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    return NextResponse.json(
+      {
+        error:
+          "Callouts are logged by your manager. Submit a time-off request from your schedule instead — your manager approves it and coverage is arranged.",
+      },
+      { status: 403 },
+    );
   }
 
   // Update the assignment status
@@ -81,13 +88,18 @@ export async function POST(request: Request) {
     .returning()
     .get();
 
-  const calledOutStaff = db.select({ firstName: staff.firstName, lastName: staff.lastName })
-    .from(staff).where(eq(staff.id, body.staffId)).get();
+  const calledOutStaff = db
+    .select({ firstName: staff.firstName, lastName: staff.lastName })
+    .from(staff)
+    .where(eq(staff.id, body.staffId))
+    .get();
   const calledOutName = calledOutStaff
     ? `${calledOutStaff.firstName} ${calledOutStaff.lastName}`
     : body.staffId;
 
-  const reasonDetailSuffix = body.reasonDetail ? ` — Detail: ${body.reasonDetail}` : "";
+  const reasonDetailSuffix = body.reasonDetail
+    ? ` — Detail: ${body.reasonDetail}`
+    : "";
   logAuditEvent({
     entityType: "callout",
     entityId: newCallout.id,
@@ -109,6 +121,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     { callout: newCallout, escalationOptions: options, chargeNurseRequired },
-    { status: 201 }
+    { status: 201 },
   );
 }

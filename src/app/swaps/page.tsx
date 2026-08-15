@@ -34,8 +34,12 @@ import { format, parseISO } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { GuideNudge } from "@/components/ui/guide-nudge";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
-import { isPracticeText, stripPracticeMarker } from "@/lib/onboarding/practice-marker";
+import {
+  isPracticeText,
+  stripPracticeMarker,
+} from "@/lib/onboarding/practice-marker";
 import { ConfirmRealActionDialog } from "@/components/ui/confirm-real-action-dialog";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface SwapRequest {
   id: string;
@@ -81,7 +85,10 @@ interface AssignmentOption {
   scheduleName: string;
 }
 
-const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline" | "warning"> = {
+const statusColors: Record<
+  string,
+  "default" | "secondary" | "destructive" | "outline" | "warning"
+> = {
   pending: "warning",
   approved: "default",
   denied: "destructive",
@@ -103,17 +110,24 @@ export default function SwapsPage() {
   const practiceActive = !!practice?.active;
   const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "denied">("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<
+    "all" | "pending" | "approved" | "denied"
+  >("all");
 
   // Guard: acting on a REAL swap while the tutorial is active asks first.
   const [confirmRealOpen, setConfirmRealOpen] = useState(false);
-  const [pendingRealAction, setPendingRealAction] = useState<(() => void) | null>(null);
+  const [pendingRealAction, setPendingRealAction] = useState<
+    (() => void) | null
+  >(null);
 
   // Two-step approve: pre-validation confirmation dialog
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [confirmSwapId, setConfirmSwapId] = useState<string | null>(null);
   const [confirmValidating, setConfirmValidating] = useState(false);
-  const [confirmViolations, setConfirmViolations] = useState<SwapViolation[]>([]);
+  const [confirmViolations, setConfirmViolations] = useState<SwapViolation[]>(
+    [],
+  );
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmValid, setConfirmValid] = useState(false);
   const [confirmOpenRequest, setConfirmOpenRequest] = useState(false);
@@ -123,19 +137,30 @@ export default function SwapsPage() {
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [allStaff, setAllStaff] = useState<StaffMember[]>([]);
   const [requestingStaffId, setRequestingStaffId] = useState("");
-  const [requestingAssignments, setRequestingAssignments] = useState<AssignmentOption[]>([]);
+  const [requestingAssignments, setRequestingAssignments] = useState<
+    AssignmentOption[]
+  >([]);
   const [requestingAssignmentId, setRequestingAssignmentId] = useState("");
   const [targetStaffId, setTargetStaffId] = useState("");
-  const [targetAssignments, setTargetAssignments] = useState<AssignmentOption[]>([]);
+  const [targetAssignments, setTargetAssignments] = useState<
+    AssignmentOption[]
+  >([]);
   const [targetAssignmentId, setTargetAssignmentId] = useState("");
   const [swapNotes, setSwapNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
-    const res = await fetch("/api/swap-requests");
-    const data = await res.json();
-    setSwapRequests(data);
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setSwapRequests(await fetchJson<SwapRequest[]>("/api/swap-requests"));
+    } catch {
+      setLoadError(
+        "Couldn't load swap requests. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -158,7 +183,9 @@ export default function SwapsPage() {
       setConfirmValidating(false);
 
       if (!res.ok) {
-        setConfirmError(data.error ?? "An unexpected error occurred during validation.");
+        setConfirmError(
+          data.error ?? "An unexpected error occurred during validation.",
+        );
         return;
       }
 
@@ -170,7 +197,9 @@ export default function SwapsPage() {
       }
     } catch {
       setConfirmValidating(false);
-      setConfirmError("Could not reach the validation service. Please try again.");
+      setConfirmError(
+        "Could not reach the validation service. Please try again.",
+      );
     }
   }
 
@@ -198,8 +227,14 @@ export default function SwapsPage() {
     }
     const req = swapRequests.find((r) => r.id === confirmSwapId);
     if (req) {
-      const reqName = req.requestor ? `${req.requestor.firstName} ${req.requestor.lastName}` : "Staff";
-      addToast({ title: "Swap approved", description: `${reqName}'s swap request`, variant: "success" });
+      const reqName = req.requestor
+        ? `${req.requestor.firstName} ${req.requestor.lastName}`
+        : "Staff";
+      addToast({
+        title: "Swap approved",
+        description: `${reqName}'s swap request`,
+        variant: "success",
+      });
     }
     window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
@@ -225,8 +260,14 @@ export default function SwapsPage() {
       body: JSON.stringify({ status: "denied", validationNotes }),
     });
     if (req) {
-      const reqName = req.requestor ? `${req.requestor.firstName} ${req.requestor.lastName}` : "Staff";
-      addToast({ title: "Swap denied", description: `${reqName}'s swap request`, variant: "warning" });
+      const reqName = req.requestor
+        ? `${req.requestor.firstName} ${req.requestor.lastName}`
+        : "Staff";
+      addToast({
+        title: "Swap denied",
+        description: `${reqName}'s swap request`,
+        variant: "warning",
+      });
     }
     window.dispatchEvent(new Event("onboarding-refresh"));
     fetchData();
@@ -281,7 +322,8 @@ export default function SwapsPage() {
       body: JSON.stringify({
         requestingStaffId,
         requestingAssignmentId,
-        targetStaffId: targetStaffId && targetStaffId !== "none" ? targetStaffId : null,
+        targetStaffId:
+          targetStaffId && targetStaffId !== "none" ? targetStaffId : null,
         targetAssignmentId: targetAssignmentId || null,
         notes: swapNotes || null,
       }),
@@ -290,8 +332,14 @@ export default function SwapsPage() {
     setLogDialogOpen(false);
     if (res.ok) {
       const reqStaff = allStaff.find((s) => s.id === requestingStaffId);
-      const name = reqStaff ? `${reqStaff.firstName} ${reqStaff.lastName}` : "Staff";
-      addToast({ title: "Swap request logged", description: `${name}'s request is pending review`, variant: "success" });
+      const name = reqStaff
+        ? `${reqStaff.firstName} ${reqStaff.lastName}`
+        : "Staff";
+      addToast({
+        title: "Swap request logged",
+        description: `${name}'s request is pending review`,
+        variant: "success",
+      });
     } else {
       addToast({ title: "Failed to log swap request", variant: "error" });
     }
@@ -309,11 +357,14 @@ export default function SwapsPage() {
     act();
   }
 
-  const filteredRequests = filter === "all"
-    ? swapRequests
-    : swapRequests.filter(r => r.status === filter);
+  const filteredRequests =
+    filter === "all"
+      ? swapRequests
+      : swapRequests.filter((r) => r.status === filter);
 
-  const pendingCount = swapRequests.filter(r => r.status === "pending").length;
+  const pendingCount = swapRequests.filter(
+    (r) => r.status === "pending",
+  ).length;
 
   return (
     <div>
@@ -339,7 +390,9 @@ export default function SwapsPage() {
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
             {f === "pending" && pendingCount > 0 && (
-              <Badge variant="secondary" className="ml-2">{pendingCount}</Badge>
+              <Badge variant="secondary" className="ml-2">
+                {pendingCount}
+              </Badge>
             )}
           </Button>
         ))}
@@ -352,22 +405,45 @@ export default function SwapsPage() {
         <CardContent>
           {loading ? (
             <p className="text-muted-foreground">Loading...</p>
+          ) : loadError ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-destructive">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={fetchData}>
+                Try again
+              </Button>
+            </div>
           ) : filteredRequests.length === 0 ? (
             <div className="rounded-lg border-2 border-dashed border-muted p-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-                  <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-muted-foreground"
+                >
+                  <path d="M8 3 4 7l4 4" />
+                  <path d="M4 7h16" />
+                  <path d="m16 21 4-4-4-4" />
+                  <path d="M20 17H4" />
                 </svg>
               </div>
               <p className="font-medium">
-                {filter === "all" ? "No swap requests" : `No ${filter} swap requests`}
+                {filter === "all"
+                  ? "No swap requests"
+                  : `No ${filter} swap requests`}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {filter === "pending"
                   ? "No swaps awaiting review."
                   : filter === "all"
-                  ? "When two nurses want to trade shifts, the request lands here — compliance rules are checked automatically."
-                  : "Swap requests will appear here once submitted."}
+                    ? "When two nurses want to trade shifts, the request lands here — compliance rules are checked automatically."
+                    : "Swap requests will appear here once submitted."}
               </p>
             </div>
           ) : (
@@ -387,59 +463,88 @@ export default function SwapsPage() {
                 {filteredRequests.map((req) => {
                   const isPractice = isPracticeSwap(req);
                   return (
-                  <TableRow
-                    key={req.id}
-                    className={isPractice ? "bg-amber-50 dark:bg-amber-950/20" : undefined}
-                  >
-                    <TableCell className="font-medium">
-                      <span className="inline-flex items-center gap-2">
-                        {req.requestor?.firstName} {req.requestor?.lastName}
-                        {isPractice && (
-                          <Badge variant="default" className="text-xs">Practice</Badge>
+                    <TableRow
+                      key={req.id}
+                      className={
+                        isPractice
+                          ? "bg-amber-50 dark:bg-amber-950/20"
+                          : undefined
+                      }
+                    >
+                      <TableCell className="font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          {req.requestor?.firstName} {req.requestor?.lastName}
+                          {isPractice && (
+                            <Badge variant="default" className="text-xs">
+                              Practice
+                            </Badge>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {req.requestorShiftDate
+                          ? format(
+                              parseISO(req.requestorShiftDate),
+                              "MMM d, yyyy",
+                            )
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {req.target ? (
+                          `${req.target.firstName} ${req.target.lastName}`
+                        ) : (
+                          <span className="text-muted-foreground italic">
+                            Open request
+                          </span>
                         )}
-                      </span>
-                    </TableCell>
-                    <TableCell>{req.requestorShiftDate ? format(parseISO(req.requestorShiftDate), "MMM d, yyyy") : "—"}</TableCell>
-                    <TableCell>
-                      {req.target ? (
-                        `${req.target.firstName} ${req.target.lastName}`
-                      ) : (
-                        <span className="text-muted-foreground italic">Open request</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{req.targetShiftDate ? format(parseISO(req.targetShiftDate), "MMM d, yyyy") : "—"}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[req.status]}>{req.status}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-50 truncate">{stripPracticeMarker(req.notes)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 items-center">
-                        {req.status === "pending" && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => guardRealAction(req, () => handleApproveClick(req.id))}
-                            >
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => guardRealAction(req, () => handleDeny(req.id))}
-                            >
-                              Deny
-                            </Button>
-                          </>
-                        )}
-                        <EntityHistoryDialog
-                          entityId={req.id}
-                          entityType="swap_request"
-                          title="Swap Request History"
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                      <TableCell>
+                        {req.targetShiftDate
+                          ? format(parseISO(req.targetShiftDate), "MMM d, yyyy")
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusColors[req.status]}>
+                          {req.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-50 truncate">
+                        {stripPracticeMarker(req.notes)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1 items-center">
+                          {req.status === "pending" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() =>
+                                  guardRealAction(req, () =>
+                                    handleApproveClick(req.id),
+                                  )
+                                }
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() =>
+                                  guardRealAction(req, () => handleDeny(req.id))
+                                }
+                              >
+                                Deny
+                              </Button>
+                            </>
+                          )}
+                          <EntityHistoryDialog
+                            entityId={req.id}
+                            entityType="swap_request"
+                            title="Swap Request History"
+                          />
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
               </TableBody>
@@ -454,8 +559,8 @@ export default function SwapsPage() {
           <DialogHeader>
             <DialogTitle>Log Swap Request</DialogTitle>
             <DialogDescription>
-              Record a shift swap request between two staff members. Target staff and assignment
-              are optional for open swap requests.
+              Record a shift swap request between two staff members. Target
+              staff and assignment are optional for open swap requests.
             </DialogDescription>
           </DialogHeader>
 
@@ -465,7 +570,10 @@ export default function SwapsPage() {
               <h4 className="text-sm font-semibold">Requesting Staff</h4>
               <div className="space-y-1.5">
                 <Label>Staff member</Label>
-                <Select value={requestingStaffId} onValueChange={onRequestingStaffChange}>
+                <Select
+                  value={requestingStaffId}
+                  onValueChange={onRequestingStaffChange}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select staff…" />
                   </SelectTrigger>
@@ -487,7 +595,10 @@ export default function SwapsPage() {
                       No upcoming assignments found.
                     </p>
                   ) : (
-                    <Select value={requestingAssignmentId} onValueChange={setRequestingAssignmentId}>
+                    <Select
+                      value={requestingAssignmentId}
+                      onValueChange={setRequestingAssignmentId}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select assignment…" />
                       </SelectTrigger>
@@ -509,7 +620,9 @@ export default function SwapsPage() {
             <div className="space-y-3 border-t pt-4">
               <h4 className="text-sm font-semibold">
                 Target Staff{" "}
-                <span className="font-normal text-muted-foreground">(optional)</span>
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
               </h4>
               <div className="space-y-1.5">
                 <Label>Staff member</Label>
@@ -521,7 +634,9 @@ export default function SwapsPage() {
                     <SelectValue placeholder="Leave blank for open request…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">— Open request (no specific target) —</SelectItem>
+                    <SelectItem value="none">
+                      — Open request (no specific target) —
+                    </SelectItem>
                     {allStaff
                       .filter((s) => s.id !== requestingStaffId)
                       .map((s) => (
@@ -541,7 +656,10 @@ export default function SwapsPage() {
                       No upcoming assignments found.
                     </p>
                   ) : (
-                    <Select value={targetAssignmentId} onValueChange={setTargetAssignmentId}>
+                    <Select
+                      value={targetAssignmentId}
+                      onValueChange={setTargetAssignmentId}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select assignment…" />
                       </SelectTrigger>
@@ -576,7 +694,9 @@ export default function SwapsPage() {
               </Button>
               <Button
                 onClick={handleSubmitSwap}
-                disabled={!requestingStaffId || !requestingAssignmentId || submitting}
+                disabled={
+                  !requestingStaffId || !requestingAssignmentId || submitting
+                }
               >
                 {submitting ? "Submitting…" : "Submit Request"}
               </Button>
@@ -619,7 +739,9 @@ export default function SwapsPage() {
             <div className="space-y-3">
               {confirmViolations.map((v, i) => (
                 <Alert key={i} variant="destructive">
-                  <AlertTitle className="capitalize">{v.ruleId.replace(/-/g, " ")}</AlertTitle>
+                  <AlertTitle className="capitalize">
+                    {v.ruleId.replace(/-/g, " ")}
+                  </AlertTitle>
                   <AlertDescription>{v.description}</AlertDescription>
                 </Alert>
               ))}
@@ -628,7 +750,9 @@ export default function SwapsPage() {
 
           {!confirmValidating && confirmValid && !confirmError && (
             <Alert className="border-green-500 bg-green-50 dark:bg-green-950/20">
-              <AlertTitle className="text-green-700 dark:text-green-300">No violations found</AlertTitle>
+              <AlertTitle className="text-green-700 dark:text-green-300">
+                No violations found
+              </AlertTitle>
               <AlertDescription className="text-green-600 dark:text-green-400">
                 This swap is compatible with all scheduling rules.
               </AlertDescription>
@@ -636,11 +760,19 @@ export default function SwapsPage() {
           )}
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <Button variant="outline" onClick={() => setConfirmDialogOpen(false)}>
-              {confirmViolations.length > 0 || confirmError ? "Close" : "Cancel"}
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDialogOpen(false)}
+            >
+              {confirmViolations.length > 0 || confirmError
+                ? "Close"
+                : "Cancel"}
             </Button>
             {!confirmValidating && confirmValid && !confirmError && (
-              <Button onClick={handleConfirmApprove} disabled={confirmApproving}>
+              <Button
+                onClick={handleConfirmApprove}
+                disabled={confirmApproving}
+              >
                 {confirmApproving ? "Approving…" : "Confirm Approval"}
               </Button>
             )}

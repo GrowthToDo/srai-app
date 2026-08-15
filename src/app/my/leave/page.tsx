@@ -167,10 +167,40 @@ export default function LeavePage() {
     }
   }
 
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+
+  // Only pending requests are withdrawable — the API enforces the same rule
+  // (403 not-yours / 409 already-decided), this is just the happy path.
+  async function withdraw(id: string) {
+    setWithdrawingId(id);
+    try {
+      const res = await fetch(`/api/staff-leave/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast({
+          title: "Could not withdraw",
+          description: data.error ?? "Please try again.",
+          variant: "error",
+        });
+        return;
+      }
+      addToast({ title: "Request withdrawn", variant: "success" });
+      await fetchRequests();
+    } catch {
+      addToast({
+        title: "Could not withdraw",
+        description: "Please try again.",
+        variant: "error",
+      });
+    } finally {
+      setWithdrawingId(null);
+    }
+  }
+
   const sorted = [...requests].sort((a, b) =>
     (b.submittedAt ?? b.createdAt ?? "").localeCompare(
-      a.submittedAt ?? a.createdAt ?? ""
-    )
+      a.submittedAt ?? a.createdAt ?? "",
+    ),
   );
 
   if (sessionLoading) {
@@ -216,10 +246,15 @@ export default function LeavePage() {
                 <Card>
                   <CardContent className="flex items-start justify-between gap-3 p-4">
                     <div className="space-y-0.5">
-                      <div className="font-medium">{typeLabel(r.leaveType)}</div>
+                      <div className="font-medium">
+                        {typeLabel(r.leaveType)}
+                      </div>
                       <div className="text-sm text-muted-foreground">
                         {format(new Date(r.startDate + "T00:00:00"), "MMM d")} –{" "}
-                        {format(new Date(r.endDate + "T00:00:00"), "MMM d, yyyy")}
+                        {format(
+                          new Date(r.endDate + "T00:00:00"),
+                          "MMM d, yyyy",
+                        )}
                       </div>
                       {r.reason && (
                         <div className="text-xs text-muted-foreground">
@@ -227,9 +262,22 @@ export default function LeavePage() {
                         </div>
                       )}
                     </div>
-                    <Badge className={meta.className} variant="outline">
-                      {meta.label}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-2">
+                      <Badge className={meta.className} variant="outline">
+                        {meta.label}
+                      </Badge>
+                      {r.status === "pending" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-muted-foreground"
+                          disabled={withdrawingId === r.id}
+                          onClick={() => withdraw(r.id)}
+                        >
+                          {withdrawingId === r.id ? "Withdrawing…" : "Withdraw"}
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </li>
@@ -295,9 +343,9 @@ export default function LeavePage() {
             </div>
 
             <p className="rounded-md bg-accent/60 p-2 text-xs text-muted-foreground">
-              Approved leave within 7 days of a scheduled shift creates an urgent
-              callout; further out it becomes an open shift your manager fills
-              calmly.
+              Approved leave within 7 days of a scheduled shift creates an
+              urgent callout; further out it becomes an open shift your manager
+              fills calmly.
             </p>
           </div>
 

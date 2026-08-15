@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { format, startOfMonth, endOfMonth, addMonths, subMonths } from "date-fns";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  subMonths,
+  differenceInCalendarDays,
+} from "date-fns";
 import { AlertTriangle, CalendarClock, ChevronRight } from "lucide-react";
 import { useSession } from "@/lib/auth/use-session";
 import { useToast } from "@/components/ui/toast";
@@ -35,12 +42,23 @@ import {
   type NurseShift,
 } from "@/lib/nurse/schedule-helpers";
 
-// Callout reasons a nurse may pick — matches the callout.reason schema enum
-// (no_show is manager-only, so it is intentionally excluded here).
-const CALLOUT_REASONS: { value: string; label: string }[] = [
+// EVERY nurse-initiated absence is a time-off REQUEST that lands in the
+// manager's Leave queue for approval — nothing a nurse taps here bypasses the
+// manager or writes a callout directly (founder direction 2026-08-15). On
+// approval, the server decides coverage: within the unit's callout threshold
+// (default 7 days) it creates an urgent callout, further out an open shift.
+// This constant only tunes the urgency COPY shown to the nurse.
+const URGENT_COPY_THRESHOLD_DAYS = 7;
+
+// Time-off types a nurse may request — subset of the staffLeave.leaveType
+// schema enum (maternity is arranged with the manager directly, not via a
+// one-tap shift dialog).
+const LEAVE_TYPES: { value: string; label: string }[] = [
   { value: "sick", label: "Sick" },
-  { value: "family_emergency", label: "Family emergency" },
+  { value: "vacation", label: "Vacation" },
   { value: "personal", label: "Personal" },
+  { value: "medical", label: "Medical appointment" },
+  { value: "bereavement", label: "Bereavement" },
   { value: "other", label: "Other" },
 ];
 
@@ -74,9 +92,14 @@ export default function MySchedulePage() {
       })
       .catch(() => setHasAvailability(null));
   }, [user?.employmentType, user?.staffId]);
-  const [reason, setReason] = useState<string>("");
+  const [leaveType, setLeaveType] = useState<string>("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Own pending time-off requests, so a shift the nurse already asked off
+  // shows "request pending" instead of offering the form again.
+  const [pendingRanges, setPendingRanges] = useState<
+    { startDate: string; endDate: string }[]
+  >([]);
 
   const staffId = user?.staffId ?? null;
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -86,11 +109,17 @@ export default function MySchedulePage() {
   const fetchSchedule = useCallback(async () => {
     if (!staffId) return;
     setLoading(true);
-    const rangeStart = format(startOfMonth(subMonths(currentMonth, 1)), "yyyy-MM-dd");
-    const rangeEnd = format(endOfMonth(addMonths(currentMonth, 1)), "yyyy-MM-dd");
+    const rangeStart = format(
+      startOfMonth(subMonths(currentMonth, 1)),
+      "yyyy-MM-dd",
+    );
+    const rangeEnd = format(
+      endOfMonth(addMonths(currentMonth, 1)),
+      "yyyy-MM-dd",
+    );
     try {
       const res = await fetch(
-        `/api/staff/${staffId}/schedule?startDate=${rangeStart}&endDate=${rangeEnd}`
+        `/api/staff/${staffId}/schedule?startDate=${rangeStart}&endDate=${rangeEnd}`,
       );
       const data = await res.json();
       setDays(Array.isArray(data.days) ? data.days : []);
@@ -107,49 +136,86 @@ export default function MySchedulePage() {
   const next = useMemo(() => nextShift(days, todayStr), [days, todayStr]);
   const upcoming = useMemo(
     () => upcomingShifts(days, todayStr, 10),
-    [days, todayStr]
+    [days, todayStr],
   );
+
+  const fetchPendingRequests = useCallback(async () => {
+    if (!staffId) return;
+    try {
+      const res = await fetch(`/api/staff-leave?staffId=${staffId}`);
+      if (!res.ok) return;
+      const rows: { status: string; startDate: string; endDate: string }[] =
+        await res.json();
+      setPendingRanges(
+        rows
+          .filter((r) => r.status === "pending")
+          .map((r) => ({ startDate: r.startDate, endDate: r.endDate })),
+      );
+    } catch {
+      // Non-critical — worst case the nurse sees the form again and the
+      // server-side duplicate handling applies.
+    }
+  }, [staffId]);
+
+  useEffect(() => {
+    if (staffId) fetchPendingRequests();
+  }, [staffId, fetchPendingRequests]);
 
   function openShift(shift: NurseShift) {
     setSelected(shift);
-    setReason("");
     setNote("");
+    setLeaveType("");
   }
 
-  async function submitCallout() {
-    if (!selected || !staffId || !reason) return;
+  // Urgency is COPY only — the flow is identical for every date (manager
+  // approval always; the server picks callout-vs-open-shift on approval).
+  const daysUntilSelected = selected
+    ? differenceInCalendarDays(
+        new Date(selected.date + "T00:00:00"),
+        new Date(),
+      )
+    : 0;
+  const isUrgent = daysUntilSelected < URGENT_COPY_THRESHOLD_DAYS;
+  const hasPendingForSelected =
+    !!selected &&
+    pendingRanges.some(
+      (r) => selected.date >= r.startDate && selected.date <= r.endDate,
+    );
+
+  async function submitLeaveRequest() {
+    if (!selected || !staffId || !leaveType) return;
     setSubmitting(true);
     try {
-      const res = await fetch("/api/callouts", {
+      const res = await fetch("/api/staff-leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          assignmentId: selected.assignmentId,
           staffId,
-          shiftId: selected.shiftId,
-          reason,
-          reasonDetail: note.trim() || null,
+          leaveType,
+          startDate: selected.date,
+          endDate: selected.date,
+          reason: note.trim() || null,
         }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         addToast({
-          title: "Could not submit callout",
+          title: "Could not send request",
           description: data.error ?? "Please try again.",
           variant: "error",
         });
         return;
       }
       addToast({
-        title: "Callout submitted",
-        description: "Your manager has been notified.",
+        title: "Time-off request sent",
+        description: "Your manager will review it. Track it under Time off.",
         variant: "success",
       });
       setSelected(null);
-      await fetchSchedule();
+      await fetchPendingRequests();
     } catch {
       addToast({
-        title: "Could not submit callout",
+        title: "Could not send request",
         description: "Please try again.",
         variant: "error",
       });
@@ -192,7 +258,8 @@ export default function MySchedulePage() {
                   {format(new Date(next.date + "T00:00:00"), "EEE, MMM d")}
                 </div>
                 <div className="text-sm opacity-90">
-                  {shiftTypeLabel(next.shiftType)} {next.startTime}–{next.endTime}
+                  {shiftTypeLabel(next.shiftType)} {next.startTime}–
+                  {next.endTime}
                 </div>
               </div>
               <Badge className="bg-white/20 text-primary-foreground">
@@ -205,7 +272,8 @@ export default function MySchedulePage() {
                 <CalendarClock className="size-3.5" />
                 <span>Next shift</span>
               </div>
-              {user.employmentType === "per_diem" && hasAvailability === false ? (
+              {user.employmentType === "per_diem" &&
+              hasAvailability === false ? (
                 <div className="space-y-2">
                   <p className="text-sm opacity-90">
                     You haven&apos;t shared your availability yet — your manager
@@ -217,7 +285,9 @@ export default function MySchedulePage() {
                     size="sm"
                     className="!bg-white !text-primary hover:!bg-white/90"
                   >
-                    <Link href="/my/availability">Submit my availability →</Link>
+                    <Link href="/my/availability">
+                      Submit my availability →
+                    </Link>
                   </Button>
                 </div>
               ) : user.employmentType === "per_diem" ? (
@@ -289,8 +359,8 @@ export default function MySchedulePage() {
                         )}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {shiftTypeLabel(s.shiftType)} {s.startTime}–{s.endTime} ·{" "}
-                        {s.unit}
+                        {shiftTypeLabel(s.shiftType)} {s.startTime}–{s.endTime}{" "}
+                        · {s.unit}
                       </div>
                     </div>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
@@ -330,7 +400,10 @@ export default function MySchedulePage() {
                   )}
                   {selected.isFloat && (
                     <Badge variant="outline">
-                      Float{selected.floatFromUnit ? ` from ${selected.floatFromUnit}` : ""}
+                      Float
+                      {selected.floatFromUnit
+                        ? ` from ${selected.floatFromUnit}`
+                        : ""}
                     </Badge>
                   )}
                   {selected.status === "called_out" && (
@@ -340,8 +413,17 @@ export default function MySchedulePage() {
 
                 {selected.status === "called_out" ? (
                   <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-                    You&apos;ve already called out of this shift. Your manager is
-                    arranging coverage.
+                    You&apos;ve already called out of this shift. Your manager
+                    is arranging coverage.
+                  </div>
+                ) : hasPendingForSelected ? (
+                  <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+                    You already have a time-off request pending for this date.
+                    Your manager will review it — track or withdraw it under{" "}
+                    <Link href="/my/leave" className="underline">
+                      Time off
+                    </Link>
+                    .
                   </div>
                 ) : (
                   <div className="space-y-3 rounded-lg border border-border p-3">
@@ -350,15 +432,15 @@ export default function MySchedulePage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="callout-reason">Reason</Label>
-                      <Select value={reason} onValueChange={setReason}>
-                        <SelectTrigger id="callout-reason" className="w-full">
+                      <Label htmlFor="leave-type">Reason</Label>
+                      <Select value={leaveType} onValueChange={setLeaveType}>
+                        <SelectTrigger id="leave-type" className="w-full">
                           <SelectValue placeholder="Select a reason" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CALLOUT_REASONS.map((r) => (
-                            <SelectItem key={r.value} value={r.value}>
-                              {r.label}
+                          {LEAVE_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -366,9 +448,9 @@ export default function MySchedulePage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="callout-note">Note (optional)</Label>
+                      <Label htmlFor="leave-note">Note (optional)</Label>
                       <Textarea
-                        id="callout-note"
+                        id="leave-note"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         placeholder="Anything your manager should know"
@@ -376,21 +458,40 @@ export default function MySchedulePage() {
                       />
                     </div>
 
-                    <div className="flex items-start gap-2 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                      <span>
-                        Your manager will be notified and will arrange coverage.
-                      </span>
-                    </div>
+                    {isUrgent ? (
+                      <div className="flex items-start gap-2 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          This shift is soon — your request goes to your manager
+                          for approval right away, and coverage is arranged
+                          urgently once approved.
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="rounded-md bg-accent/60 p-2 text-xs text-muted-foreground">
+                        This goes to your manager as a time-off request.
+                        Coverage is arranged once it&apos;s approved — track or
+                        withdraw it under Time off.
+                      </p>
+                    )}
 
-                    <Button
-                      variant="destructive"
-                      className="w-full"
-                      disabled={!reason || submitting}
-                      onClick={submitCallout}
-                    >
-                      {submitting ? "Submitting…" : "Call out"}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        disabled={submitting}
+                        onClick={() => setSelected(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        disabled={!leaveType || submitting}
+                        onClick={submitLeaveRequest}
+                      >
+                        {submitting ? "Sending…" : "Request time off"}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

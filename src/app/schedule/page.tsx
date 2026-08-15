@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
 import { SkeletonCard } from "@/components/ui/skeleton";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Schedule {
   id: string;
@@ -47,6 +48,7 @@ export default function SchedulePage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,16 +60,26 @@ export default function SchedulePage() {
   const [selectedUnit, setSelectedUnit] = useState("");
 
   const fetchSchedules = useCallback(async () => {
-    const res = await fetch("/api/schedules");
-    setSchedules(await res.json());
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [schedulesData, unitsData] = await Promise.all([
+        fetchJson<Schedule[]>("/api/schedules"),
+        fetchJson<Unit[]>("/api/units"),
+      ]);
+      setSchedules(schedulesData);
+      setUnits(unitsData);
+    } catch {
+      setLoadError(
+        "Couldn't load schedules. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     fetchSchedules();
-    fetch("/api/units")
-      .then((r) => r.json())
-      .then(setUnits);
   }, [fetchSchedules]);
 
   function openDialog() {
@@ -104,7 +116,12 @@ export default function SchedulePage() {
     const res = await fetch("/api/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), startDate, endDate, unit: selectedUnit }),
+      body: JSON.stringify({
+        name: name.trim(),
+        startDate,
+        endDate,
+        unit: selectedUnit,
+      }),
     });
 
     if (!res.ok) {
@@ -136,13 +153,25 @@ export default function SchedulePage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-start gap-3 py-12">
+        <p className="text-sm text-destructive">{loadError}</p>
+        <Button variant="outline" size="sm" onClick={fetchSchedules}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Schedule</h1>
           <p className="mt-1 text-muted-foreground">
-            {schedules.length} schedule period{schedules.length !== 1 ? "s" : ""}
+            {schedules.length} schedule period
+            {schedules.length !== 1 ? "s" : ""}
           </p>
         </div>
         <Button onClick={openDialog}>New Schedule</Button>
@@ -153,8 +182,22 @@ export default function SchedulePage() {
       {schedules.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-muted p-16 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-              <path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-primary"
+            >
+              <path d="M8 2v4" />
+              <path d="M16 2v4" />
+              <rect width="18" height="18" x="3" y="4" rx="2" />
+              <path d="M3 10h18" />
             </svg>
           </div>
           <p className="text-lg font-medium">No schedule periods yet</p>
@@ -181,8 +224,8 @@ export default function SchedulePage() {
                         s.status === "published"
                           ? "default"
                           : s.status === "draft"
-                          ? "secondary"
-                          : "outline"
+                            ? "secondary"
+                            : "outline"
                       }
                     >
                       {s.status}
@@ -202,7 +245,13 @@ export default function SchedulePage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setError(null); }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setError(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Schedule Period</DialogTitle>
@@ -215,7 +264,10 @@ export default function SchedulePage() {
                 id="sched-name"
                 placeholder="e.g. ICU — Feb/Mar 2026"
                 value={name}
-                onChange={(e) => { setName(e.target.value); setError(null); }}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError(null);
+                }}
               />
             </div>
 
@@ -226,7 +278,10 @@ export default function SchedulePage() {
                   id="sched-start"
                   type="date"
                   value={startDate}
-                  onChange={(e) => { setStartDate(e.target.value); setError(null); }}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setError(null);
+                  }}
                 />
               </div>
               <div className="space-y-1">
@@ -235,14 +290,23 @@ export default function SchedulePage() {
                   id="sched-end"
                   type="date"
                   value={endDate}
-                  onChange={(e) => { setEndDate(e.target.value); setError(null); }}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setError(null);
+                  }}
                 />
               </div>
             </div>
 
             <div className="space-y-1">
               <Label>Unit</Label>
-              <Select value={selectedUnit} onValueChange={(v) => { setSelectedUnit(v); setError(null); }}>
+              <Select
+                value={selectedUnit}
+                onValueChange={(v) => {
+                  setSelectedUnit(v);
+                  setError(null);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a unit" />
                 </SelectTrigger>
@@ -251,7 +315,9 @@ export default function SchedulePage() {
                     <SelectItem key={u.id} value={u.name}>
                       <span className="flex items-center justify-between gap-4 w-full">
                         <span>{u.name}</span>
-                        <span className={`text-xs ${u.staffCount === 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                        <span
+                          className={`text-xs ${u.staffCount === 0 ? "text-destructive" : "text-muted-foreground"}`}
+                        >
                           {u.staffCount} staff
                         </span>
                       </span>
@@ -270,15 +336,21 @@ export default function SchedulePage() {
                 if (selected.staffCount === 0) {
                   return (
                     <p className="text-xs text-destructive">
-                      No active staff are assigned to {selected.name}. A schedule cannot be generated without staff. Go to{" "}
-                      <a href="/setup" className="underline">Import / Export</a> to load your roster first.
+                      No active staff are assigned to {selected.name}. A
+                      schedule cannot be generated without staff. Go to{" "}
+                      <a href="/setup" className="underline">
+                        Import / Export
+                      </a>{" "}
+                      to load your roster first.
                     </p>
                   );
                 }
                 if (selected.staffCount < 5) {
                   return (
                     <p className="text-xs text-yellow-600">
-                      Only {selected.staffCount} staff assigned to {selected.name}. The generated schedule may be significantly understaffed.
+                      Only {selected.staffCount} staff assigned to{" "}
+                      {selected.name}. The generated schedule may be
+                      significantly understaffed.
                     </p>
                   );
                 }
@@ -295,7 +367,12 @@ export default function SchedulePage() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={creating || units.length === 0 || (units.find((u) => u.name === selectedUnit)?.staffCount ?? 1) === 0}
+              disabled={
+                creating ||
+                units.length === 0 ||
+                (units.find((u) => u.name === selectedUnit)?.staffCount ??
+                  1) === 0
+              }
             >
               {creating ? "Creating…" : "Create Schedule"}
             </Button>

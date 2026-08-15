@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { GuideNudge } from "@/components/ui/guide-nudge";
+import { fetchJson } from "@/lib/fetch-json";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,21 +60,31 @@ type PendingChange = {
 
 // ─── Tier helpers ─────────────────────────────────────────────────────────────
 
-const TIERS: { value: "blue" | "green" | "yellow" | "red"; label: string; dot: string }[] = [
-  { value: "blue",   label: "Blue — Low Census",      dot: "bg-blue-500"   },
-  { value: "green",  label: "Green — Normal",          dot: "bg-green-500"  },
-  { value: "yellow", label: "Yellow — Elevated",       dot: "bg-yellow-500" },
-  { value: "red",    label: "Red — Critical",          dot: "bg-red-500"    },
+const TIERS: {
+  value: "blue" | "green" | "yellow" | "red";
+  label: string;
+  dot: string;
+}[] = [
+  { value: "blue", label: "Blue — Low Census", dot: "bg-blue-500" },
+  { value: "green", label: "Green — Normal", dot: "bg-green-500" },
+  { value: "yellow", label: "Yellow — Elevated", dot: "bg-yellow-500" },
+  { value: "red", label: "Red — Critical", dot: "bg-red-500" },
 ];
 
-function TierDot({ color }: { color: "blue" | "green" | "yellow" | "red" | null }) {
+function TierDot({
+  color,
+}: {
+  color: "blue" | "green" | "yellow" | "red" | null;
+}) {
   if (!color) return <span className="text-muted-foreground text-sm">—</span>;
   const tier = TIERS.find((t) => t.value === color);
   if (!tier) return null;
   return (
     <span className="flex items-center gap-1.5">
       <span className={`inline-block h-2.5 w-2.5 rounded-full ${tier.dot}`} />
-      <span className="capitalize">{tier.value.charAt(0).toUpperCase() + tier.value.slice(1)}</span>
+      <span className="capitalize">
+        {tier.value.charAt(0).toUpperCase() + tier.value.slice(1)}
+      </span>
     </span>
   );
 }
@@ -99,6 +110,7 @@ export default function CensusPage() {
   const [bands, setBands] = useState<CensusBand[]>([]);
   const [pending, setPending] = useState<Record<string, PendingChange>>({});
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   // Guards the one-time default-date clamp so it never overrides the manager's
@@ -121,23 +133,27 @@ export default function CensusPage() {
   useEffect(() => {
     fetch("/api/schedules")
       .then((r) => r.json())
-      .then((scheds: { status: string; startDate: string; endDate: string }[]) => {
-        setDateInitialized(true);
-        const published = (scheds ?? []).filter((s) => s.status === "published");
-        if (published.length === 0) return; // no published schedule → keep today
-        // Newest = latest startDate.
-        const newest = published.reduce((a, b) =>
-          a.startDate >= b.startDate ? a : b
-        );
-        // clamp(today, start, end) using ISO yyyy-MM-dd string comparison.
-        const clamped =
-          today < newest.startDate
-            ? newest.startDate
-            : today > newest.endDate
-            ? newest.endDate
-            : today;
-        if (clamped !== today) setDate(clamped);
-      })
+      .then(
+        (scheds: { status: string; startDate: string; endDate: string }[]) => {
+          setDateInitialized(true);
+          const published = (scheds ?? []).filter(
+            (s) => s.status === "published",
+          );
+          if (published.length === 0) return; // no published schedule → keep today
+          // Newest = latest startDate.
+          const newest = published.reduce((a, b) =>
+            a.startDate >= b.startDate ? a : b,
+          );
+          // clamp(today, start, end) using ISO yyyy-MM-dd string comparison.
+          const clamped =
+            today < newest.startDate
+              ? newest.startDate
+              : today > newest.endDate
+                ? newest.endDate
+                : today;
+          if (clamped !== today) setDate(clamped);
+        },
+      )
       .catch(() => setDateInitialized(true));
     // Intentionally runs once on mount; `today` is stable for the session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,12 +161,18 @@ export default function CensusPage() {
 
   const fetchShifts = useCallback(async (d: string) => {
     setLoading(true);
+    setLoadError(null);
     setPending({});
     setSaveMessage(null);
-    const res = await fetch(`/api/census?date=${d}`);
-    const data = await res.json();
-    setShifts(data);
-    setLoading(false);
+    try {
+      setShifts(await fetchJson<CensusShift[]>(`/api/census?date=${d}`));
+    } catch {
+      setLoadError(
+        "Couldn't load shifts. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -170,7 +192,9 @@ export default function CensusPage() {
       const defaults: Record<string, PendingChange> = {};
       for (const s of shifts) {
         if (!s.acuityLevel && !prev[s.id]) {
-          const bandId = bands.find((b) => b.unit === s.unit && b.color === "green")?.id ?? null;
+          const bandId =
+            bands.find((b) => b.unit === s.unit && b.color === "green")?.id ??
+            null;
           defaults[s.id] = { acuityLevel: "green", censusBandId: bandId };
         }
       }
@@ -178,13 +202,22 @@ export default function CensusPage() {
     });
   }, [shifts, bands]);
 
-  function findBandId(unit: string, color: "blue" | "green" | "yellow" | "red"): string | null {
+  function findBandId(
+    unit: string,
+    color: "blue" | "green" | "yellow" | "red",
+  ): string | null {
     return bands.find((b) => b.unit === unit && b.color === color)?.id ?? null;
   }
 
-  function handleTierChange(shift: CensusShift, color: "blue" | "green" | "yellow" | "red") {
+  function handleTierChange(
+    shift: CensusShift,
+    color: "blue" | "green" | "yellow" | "red",
+  ) {
     const censusBandId = findBandId(shift.unit, color);
-    setPending((prev) => ({ ...prev, [shift.id]: { acuityLevel: color, censusBandId } }));
+    setPending((prev) => ({
+      ...prev,
+      [shift.id]: { acuityLevel: color, censusBandId },
+    }));
   }
 
   async function handleSave() {
@@ -203,8 +236,8 @@ export default function CensusPage() {
             acuityLevel: change.acuityLevel,
             censusBandId: change.censusBandId,
           }),
-        })
-      )
+        }),
+      ),
     );
 
     const allOk = results.every((r) => r.ok);
@@ -232,8 +265,8 @@ export default function CensusPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Daily Census</h1>
         <p className="mt-1 text-muted-foreground">
-          Set the census tier for each shift. The selected tier determines minimum staffing
-          requirements for that shift.
+          Set the census tier for each shift. The selected tier determines
+          minimum staffing requirements for that shift.
         </p>
       </div>
 
@@ -291,7 +324,20 @@ export default function CensusPage() {
 
             <CardContent>
               {loading ? (
-                <p className="text-sm text-muted-foreground py-4">Loading shifts…</p>
+                <p className="text-sm text-muted-foreground py-4">
+                  Loading shifts…
+                </p>
+              ) : loadError ? (
+                <div className="flex flex-col items-start gap-3 py-4">
+                  <p className="text-sm text-destructive">{loadError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchShifts(date)}
+                  >
+                    Try again
+                  </Button>
+                </div>
               ) : shifts.length === 0 ? (
                 <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
                   No shifts found for this date.
@@ -317,7 +363,10 @@ export default function CensusPage() {
                         const isDirty = !!pending[s.id];
 
                         return (
-                          <TableRow key={s.id} className={isDirty ? "bg-muted/40" : ""}>
+                          <TableRow
+                            key={s.id}
+                            className={isDirty ? "bg-muted/40" : ""}
+                          >
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{s.name}</span>
@@ -346,7 +395,7 @@ export default function CensusPage() {
                                 onValueChange={(v) =>
                                   handleTierChange(
                                     s,
-                                    v as "blue" | "green" | "yellow" | "red"
+                                    v as "blue" | "green" | "yellow" | "red",
                                   )
                                 }
                               >
@@ -374,7 +423,10 @@ export default function CensusPage() {
                   </Table>
 
                   <div className="mt-4 flex items-center gap-3">
-                    <Button onClick={handleSave} disabled={!hasPending || saving}>
+                    <Button
+                      onClick={handleSave}
+                      disabled={!hasPending || saving}
+                    >
                       {saving ? "Saving…" : "Save Changes"}
                     </Button>
                     {hasPending && !saving && (
@@ -410,7 +462,9 @@ export default function CensusPage() {
         {/* ── Tab 2: Band Thresholds (read-only reference) ──────────────────── */}
         <TabsContent value="thresholds" className="mt-4 space-y-4">
           {Object.keys(bandsByUnit).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No census bands configured.</p>
+            <p className="text-sm text-muted-foreground">
+              No census bands configured.
+            </p>
           ) : (
             Object.entries(bandsByUnit).map(([unit, unitBands]) => (
               <Card key={unit}>
@@ -428,7 +482,9 @@ export default function CensusPage() {
                         <TableHead>Required CNAs</TableHead>
                         <TableHead>
                           Charge Nurses
-                          <span className="block text-xs font-normal text-muted-foreground">(in RN count)</span>
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            (in RN count)
+                          </span>
                         </TableHead>
                         <TableHead>Ratio</TableHead>
                       </TableRow>
@@ -458,7 +514,9 @@ export default function CensusPage() {
                               <TableCell>{b.requiredCNAs}</TableCell>
                               <TableCell>{b.requiredChargeNurses}</TableCell>
                               <TableCell>
-                                <Badge variant="secondary">{b.patientToNurseRatio}</Badge>
+                                <Badge variant="secondary">
+                                  {b.patientToNurseRatio}
+                                </Badge>
                               </TableCell>
                             </TableRow>
                           );
@@ -467,7 +525,10 @@ export default function CensusPage() {
                   </Table>
                   <p className="mt-3 text-xs text-muted-foreground">
                     To edit patient ranges or staffing requirements, go to{" "}
-                    <a href="/rules" className="underline hover:text-foreground">
+                    <a
+                      href="/rules"
+                      className="underline hover:text-foreground"
+                    >
                       Rules → Census Bands
                     </a>
                     .

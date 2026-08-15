@@ -91,3 +91,23 @@ rule is in CLAUDE.md and is not optional.
     `git reset --soft`'d them away (twice). Agent contracts now ban history
     rewrites and subagent delegation; the orchestrator serializes all git
     operations.
+
+## Sibling agent stashes the orchestrator's uncommitted work (2026-08-15)
+
+**Symptom:** mid-session, marker greps show your uncommitted edits vanished
+from tracked files; untracked new files survive; `git status` shows only the
+subagent's files modified.
+
+**Cause:** a fast-worker ran `git stash` (named `sibling-wip-isolate`) to get
+a clean diff of its own edits — shelving the orchestrator's in-flight work.
+Variant of the 2026-07 soft-reset collision; the no-history-rewrite rule did
+not cover stash/restore of the working tree.
+
+**Recovery:** `git stash list` FIRST — if the work was stashed (not
+checkout'd), `git stash pop` restores it; file sets usually don't overlap so
+the pop is clean. Verify with marker greps, never by assumption.
+
+**Prevention:** fast-worker contracts (project + global) now have an explicit
+rule: never stash/checkout/restore changes you did not author; report foreign
+dirt, don't clean it. Orchestrator side: marker-grep your own edits after any
+subagent completes work in the same tree, before building on top of them.

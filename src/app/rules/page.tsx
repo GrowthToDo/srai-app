@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Rule {
   id: string;
@@ -76,8 +77,8 @@ const RULE_PARAMS: Record<string, ParamField[]> = {
         v < 40
           ? "Below standard 40h/week — may cause gaps"
           : v > 72
-          ? "Very high — verify state regulations"
-          : null,
+            ? "Very high — verify state regulations"
+            : null,
     },
   ],
   "icu-competency": [
@@ -128,7 +129,10 @@ const RULE_PARAMS: Record<string, ParamField[]> = {
 // No-overlapping-shifts is always active; hide the toggle
 const LOCKED_RULES = new Set(["no-overlapping-shifts"]);
 
-function paramSummary(evaluatorId: string, parameters: Record<string, unknown>): string {
+function paramSummary(
+  evaluatorId: string,
+  parameters: Record<string, unknown>,
+): string {
   const fields = RULE_PARAMS[evaluatorId];
   if (!fields) return "";
   return fields
@@ -156,38 +160,50 @@ interface CensusBand {
 }
 
 const CENSUS_TIER_DOT: Record<string, string> = {
-  blue:   "bg-blue-500",
-  green:  "bg-green-500",
+  blue: "bg-blue-500",
+  green: "bg-green-500",
   yellow: "bg-yellow-500",
-  red:    "bg-red-500",
+  red: "bg-red-500",
 };
 
 const CENSUS_TIER_LABEL: Record<string, string> = {
-  blue:   "Blue — Low Census",
-  green:  "Green — Normal",
+  blue: "Blue — Low Census",
+  green: "Green — Normal",
   yellow: "Yellow — Elevated",
-  red:    "Red — Critical",
+  red: "Red — Critical",
 };
 
 export default function RulesPage() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [bands, setBands] = useState<CensusBand[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingBandId, setEditingBandId] = useState<string | null>(null);
   const [bandDraft, setBandDraft] = useState<Partial<CensusBand> | null>(null);
   const [bandSaving, setBandSaving] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [ruleDraft, setRuleDraft] = useState<Record<string, unknown> | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<Record<string, unknown> | null>(
+    null,
+  );
   const [ruleSaving, setRuleSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
-    const [rulesRes, bandsRes] = await Promise.all([
-      fetch("/api/rules"),
-      fetch("/api/census-bands"),
-    ]);
-    setRules(await rulesRes.json());
-    setBands(await bandsRes.json());
-    setLoading(false);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [rulesData, bandsData] = await Promise.all([
+        fetchJson<Rule[]>("/api/rules"),
+        fetchJson<CensusBand[]>("/api/census-bands"),
+      ]);
+      setRules(rulesData);
+      setBands(bandsData);
+    } catch {
+      setLoadError(
+        "Couldn't load rules. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -272,6 +288,17 @@ export default function RulesPage() {
     return <p className="text-muted-foreground">Loading...</p>;
   }
 
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <p className="text-sm text-destructive">{loadError}</p>
+        <Button variant="outline" size="sm" onClick={fetchData}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
   const hardRules = rules.filter((r) => r.ruleType === "hard");
   const softRules = rules.filter((r) => r.ruleType === "soft");
 
@@ -280,7 +307,8 @@ export default function RulesPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Rules Configuration</h1>
         <p className="mt-1 text-muted-foreground">
-          {rules.filter((r) => r.isActive).length} of {rules.length} rules active
+          {rules.filter((r) => r.isActive).length} of {rules.length} rules
+          active
         </p>
       </div>
 
@@ -318,7 +346,9 @@ export default function RulesPage() {
                     return (
                       <React.Fragment key={r.id}>
                         <TableRow>
-                          <TableCell className="font-medium align-top pt-3">{r.name}</TableCell>
+                          <TableCell className="font-medium align-top pt-3">
+                            {r.name}
+                          </TableCell>
                           <TableCell className="align-top pt-3">
                             <Badge variant="secondary">{r.category}</Badge>
                           </TableCell>
@@ -327,16 +357,22 @@ export default function RulesPage() {
                           </TableCell>
                           <TableCell className="align-top pt-3">
                             {summary ? (
-                              <span className="text-sm font-mono text-primary">{summary}</span>
+                              <span className="text-sm font-mono text-primary">
+                                {summary}
+                              </span>
                             ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
                             )}
                           </TableCell>
                           <TableCell className="align-top pt-3">
                             {isLocked ? (
                               <Badge variant="default">Always active</Badge>
                             ) : (
-                              <Badge variant={r.isActive ? "default" : "secondary"}>
+                              <Badge
+                                variant={r.isActive ? "default" : "secondary"}
+                              >
                                 {r.isActive ? "Active" : "Disabled"}
                               </Badge>
                             )}
@@ -373,13 +409,17 @@ export default function RulesPage() {
                               <div className="flex flex-wrap items-end gap-6">
                                 {paramFields.map((field) => {
                                   const currentVal =
-                                    (ruleDraft[field.key] as number) ?? field.default;
+                                    (ruleDraft[field.key] as number) ??
+                                    field.default;
                                   const warning =
                                     field.type === "number" && field.warnIf
                                       ? field.warnIf(currentVal)
                                       : null;
                                   return (
-                                    <div key={field.key} className="flex flex-col gap-1">
+                                    <div
+                                      key={field.key}
+                                      className="flex flex-col gap-1"
+                                    >
                                       <label className="text-xs font-medium text-muted-foreground">
                                         {field.label}
                                       </label>
@@ -389,7 +429,9 @@ export default function RulesPage() {
                                           onChange={(e) =>
                                             setRuleDraft((d) => ({
                                               ...d,
-                                              [field.key]: Number(e.target.value),
+                                              [field.key]: Number(
+                                                e.target.value,
+                                              ),
                                             }))
                                           }
                                           className="h-8 rounded-md border border-input bg-background px-2 text-sm"
@@ -409,7 +451,9 @@ export default function RulesPage() {
                                             onChange={(e) =>
                                               setRuleDraft((d) => ({
                                                 ...d,
-                                                [field.key]: Number(e.target.value),
+                                                [field.key]: Number(
+                                                  e.target.value,
+                                                ),
                                               }))
                                             }
                                             className="h-8 w-20 text-sm"
@@ -422,16 +466,26 @@ export default function RulesPage() {
                                         </div>
                                       )}
                                       {warning && (
-                                        <p className="text-xs text-amber-600">{warning}</p>
+                                        <p className="text-xs text-amber-600">
+                                          {warning}
+                                        </p>
                                       )}
                                     </div>
                                   );
                                 })}
                                 <div className="flex items-center gap-2 pb-0.5">
-                                  <Button size="sm" onClick={saveRule} disabled={ruleSaving}>
+                                  <Button
+                                    size="sm"
+                                    onClick={saveRule}
+                                    disabled={ruleSaving}
+                                  >
                                     {ruleSaving ? "Saving…" : "Save"}
                                   </Button>
-                                  <Button size="sm" variant="ghost" onClick={cancelEditRule}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={cancelEditRule}
+                                  >
                                     Cancel
                                   </Button>
                                 </div>
@@ -527,7 +581,9 @@ export default function RulesPage() {
                     <TableHead>Required CNAs</TableHead>
                     <TableHead>
                       Charge Nurses
-                      <span className="block text-xs font-normal text-muted-foreground">(in RN count)</span>
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        (in RN count)
+                      </span>
                     </TableHead>
                     <TableHead>Ratio</TableHead>
                     <TableHead>Status</TableHead>
@@ -558,16 +614,30 @@ export default function RulesPage() {
                                   type="number"
                                   min={0}
                                   className="w-16 h-7 text-sm"
-                                  value={bandDraft?.minPatients ?? b.minPatients}
-                                  onChange={(e) => setBandDraft((d) => ({ ...d, minPatients: Number(e.target.value) }))}
+                                  value={
+                                    bandDraft?.minPatients ?? b.minPatients
+                                  }
+                                  onChange={(e) =>
+                                    setBandDraft((d) => ({
+                                      ...d,
+                                      minPatients: Number(e.target.value),
+                                    }))
+                                  }
                                 />
                                 <span className="text-muted-foreground">–</span>
                                 <Input
                                   type="number"
                                   min={0}
                                   className="w-16 h-7 text-sm"
-                                  value={bandDraft?.maxPatients ?? b.maxPatients}
-                                  onChange={(e) => setBandDraft((d) => ({ ...d, maxPatients: Number(e.target.value) }))}
+                                  value={
+                                    bandDraft?.maxPatients ?? b.maxPatients
+                                  }
+                                  onChange={(e) =>
+                                    setBandDraft((d) => ({
+                                      ...d,
+                                      maxPatients: Number(e.target.value),
+                                    }))
+                                  }
                                 />
                               </div>
                             </TableCell>
@@ -577,7 +647,12 @@ export default function RulesPage() {
                                 min={0}
                                 className="w-16 h-7 text-sm"
                                 value={bandDraft?.requiredRNs ?? b.requiredRNs}
-                                onChange={(e) => setBandDraft((d) => ({ ...d, requiredRNs: Number(e.target.value) }))}
+                                onChange={(e) =>
+                                  setBandDraft((d) => ({
+                                    ...d,
+                                    requiredRNs: Number(e.target.value),
+                                  }))
+                                }
                               />
                             </TableCell>
                             <TableCell>
@@ -585,8 +660,15 @@ export default function RulesPage() {
                                 type="number"
                                 min={0}
                                 className="w-16 h-7 text-sm"
-                                value={bandDraft?.requiredLPNs ?? b.requiredLPNs}
-                                onChange={(e) => setBandDraft((d) => ({ ...d, requiredLPNs: Number(e.target.value) }))}
+                                value={
+                                  bandDraft?.requiredLPNs ?? b.requiredLPNs
+                                }
+                                onChange={(e) =>
+                                  setBandDraft((d) => ({
+                                    ...d,
+                                    requiredLPNs: Number(e.target.value),
+                                  }))
+                                }
                               />
                             </TableCell>
                             <TableCell>
@@ -594,8 +676,15 @@ export default function RulesPage() {
                                 type="number"
                                 min={0}
                                 className="w-16 h-7 text-sm"
-                                value={bandDraft?.requiredCNAs ?? b.requiredCNAs}
-                                onChange={(e) => setBandDraft((d) => ({ ...d, requiredCNAs: Number(e.target.value) }))}
+                                value={
+                                  bandDraft?.requiredCNAs ?? b.requiredCNAs
+                                }
+                                onChange={(e) =>
+                                  setBandDraft((d) => ({
+                                    ...d,
+                                    requiredCNAs: Number(e.target.value),
+                                  }))
+                                }
                               />
                             </TableCell>
                             <TableCell>
@@ -603,29 +692,57 @@ export default function RulesPage() {
                                 type="number"
                                 min={0}
                                 className="w-16 h-7 text-sm"
-                                value={bandDraft?.requiredChargeNurses ?? b.requiredChargeNurses}
-                                onChange={(e) => setBandDraft((d) => ({ ...d, requiredChargeNurses: Number(e.target.value) }))}
+                                value={
+                                  bandDraft?.requiredChargeNurses ??
+                                  b.requiredChargeNurses
+                                }
+                                onChange={(e) =>
+                                  setBandDraft((d) => ({
+                                    ...d,
+                                    requiredChargeNurses: Number(
+                                      e.target.value,
+                                    ),
+                                  }))
+                                }
                               />
                             </TableCell>
                             <TableCell>
                               <Input
                                 type="text"
                                 className="w-16 h-7 text-sm"
-                                value={bandDraft?.patientToNurseRatio ?? b.patientToNurseRatio}
-                                onChange={(e) => setBandDraft((d) => ({ ...d, patientToNurseRatio: e.target.value }))}
+                                value={
+                                  bandDraft?.patientToNurseRatio ??
+                                  b.patientToNurseRatio
+                                }
+                                onChange={(e) =>
+                                  setBandDraft((d) => ({
+                                    ...d,
+                                    patientToNurseRatio: e.target.value,
+                                  }))
+                                }
                               />
                             </TableCell>
                             <TableCell>
-                              <Badge variant={b.isActive ? "default" : "secondary"}>
+                              <Badge
+                                variant={b.isActive ? "default" : "secondary"}
+                              >
                                 {b.isActive ? "Active" : "Disabled"}
                               </Badge>
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
-                                <Button size="sm" onClick={saveBand} disabled={bandSaving}>
+                                <Button
+                                  size="sm"
+                                  onClick={saveBand}
+                                  disabled={bandSaving}
+                                >
                                   {bandSaving ? "Saving…" : "Save"}
                                 </Button>
-                                <Button size="sm" variant="ghost" onClick={cancelEditBand}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={cancelEditBand}
+                                >
                                   Cancel
                                 </Button>
                               </div>
@@ -641,10 +758,14 @@ export default function RulesPage() {
                             <TableCell>{b.requiredCNAs}</TableCell>
                             <TableCell>{b.requiredChargeNurses}</TableCell>
                             <TableCell>
-                              <Badge variant="secondary">{b.patientToNurseRatio}</Badge>
+                              <Badge variant="secondary">
+                                {b.patientToNurseRatio}
+                              </Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge variant={b.isActive ? "default" : "secondary"}>
+                              <Badge
+                                variant={b.isActive ? "default" : "secondary"}
+                              >
                                 {b.isActive ? "Active" : "Disabled"}
                               </Badge>
                             </TableCell>

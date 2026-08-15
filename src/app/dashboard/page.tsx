@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { DoughnutChart } from "@/components/ui/doughnut-chart";
 import { useOnboarding } from "@/lib/onboarding/use-onboarding";
 import { LEARN_STEPS, learnProgress } from "@/lib/onboarding/guide";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface DashboardData {
   staffCount: number;
@@ -45,9 +46,18 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
-  const { guide, counts, flags, practice, visits, dismiss, startPractice, removePractice } =
-    useOnboarding();
+  const {
+    guide,
+    counts,
+    flags,
+    practice,
+    visits,
+    dismiss,
+    startPractice,
+    removePractice,
+  } = useOnboarding();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [learnDismissed, setLearnDismissed] = useState(false);
   // Practice-mode UI state for the Learn card v2.
   const [practiceError, setPracticeError] = useState<string | null>(null);
@@ -63,12 +73,23 @@ export default function DashboardPage() {
     callouts: [3, 2, 4, 2, 1, 2, data?.openCallouts || 2],
   };
 
-  useEffect(() => {
-    fetch("/api/dashboard")
-      .then((r) => r.json())
-      .then(setData);
-    setLearnDismissed(localStorage.getItem("learnDailyOpsDismissed") === "true");
+  const fetchDashboard = useCallback(async () => {
+    setLoadError(null);
+    try {
+      setData(await fetchJson<DashboardData>("/api/dashboard"));
+    } catch {
+      setLoadError(
+        "Couldn't load the dashboard. The server may be restarting — try again in a moment.",
+      );
+    }
   }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+    setLearnDismissed(
+      localStorage.getItem("learnDailyOpsDismissed") === "true",
+    );
+  }, [fetchDashboard]);
 
   // The sidebar Help menu re-opens both checklists from any page: clear the
   // fcg:dismissed flag (via the hook) so the Getting Started card returns, plus
@@ -76,7 +97,9 @@ export default function DashboardPage() {
   useEffect(() => {
     const reopen = () => {
       localStorage.removeItem("fcg:dismissed");
-      window.dispatchEvent(new StorageEvent("storage", { key: "fcg:dismissed" }));
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "fcg:dismissed" }),
+      );
       setLearnDismissed(false);
     };
     window.addEventListener("reopen-getting-started", reopen);
@@ -113,6 +136,17 @@ export default function DashboardPage() {
     }
   }
 
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-start gap-3 py-12">
+        <p className="text-sm text-destructive">{loadError}</p>
+        <Button variant="outline" size="sm" onClick={fetchDashboard}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
   if (!data) {
     return (
       <div className="space-y-6">
@@ -132,15 +166,37 @@ export default function DashboardPage() {
   // new users previously got lost (nothing pointed from "schedule created" to
   // "generate and publish it").
   const activeSchedule = counts?.activeSchedule ?? null;
-  const scheduleHref = activeSchedule ? `/schedule/${activeSchedule.id}` : "/schedule";
+  const scheduleHref = activeSchedule
+    ? `/schedule/${activeSchedule.id}`
+    : "/schedule";
   const hasPublished = (counts?.publishedCount ?? 0) > 0;
   const gettingStartedSteps = [
-    { label: "Import your staff roster", done: (counts?.staffCount ?? 0) > 0, href: "/setup" },
+    {
+      label: "Import your staff roster",
+      done: (counts?.staffCount ?? 0) > 0,
+      href: "/setup",
+    },
     { label: "Review your staff", done: flags.staffReviewed, href: "/staff" },
-    { label: "Review units & rules", done: (counts?.unitsCount ?? 0) > 0, href: "/settings/units" },
-    { label: "Create a schedule period", done: (counts?.scheduleCount ?? 0) > 0, href: "/schedule" },
-    { label: "Generate the schedule", done: Boolean(activeSchedule?.hasAssignments) || flags.celebrated, href: scheduleHref },
-    { label: "Review and publish it", done: hasPublished || flags.celebrated, href: scheduleHref },
+    {
+      label: "Review units & rules",
+      done: (counts?.unitsCount ?? 0) > 0,
+      href: "/settings/units",
+    },
+    {
+      label: "Create a schedule period",
+      done: (counts?.scheduleCount ?? 0) > 0,
+      href: "/schedule",
+    },
+    {
+      label: "Generate the schedule",
+      done: Boolean(activeSchedule?.hasAssignments) || flags.celebrated,
+      href: scheduleHref,
+    },
+    {
+      label: "Review and publish it",
+      done: hasPublished || flags.celebrated,
+      href: scheduleHref,
+    },
   ];
   // Card is visible while the first cycle is in flight (S0–S4) and not dismissed.
   const inFirstCycleStages =
@@ -155,36 +211,75 @@ export default function DashboardPage() {
   // status + visit flags), not the retired click-tracking.
   const learnDone = learnProgress(practice, visits);
 
-  const attentionItems: { href: string; text: string; urgent: boolean; info?: boolean }[] = [
+  const attentionItems: {
+    href: string;
+    text: string;
+    urgent: boolean;
+    info?: boolean;
+  }[] = [
     ...(data.overstaffedShifts > 0 && data.scheduleInfo
-      ? [{
-          href: `/schedule/${data.scheduleInfo.id}`,
-          text: `${data.overstaffedShifts} shift${data.overstaffedShifts > 1 ? "s have" : " has"} excess staff — consider flex-home or VTO`,
-          urgent: false,
-          info: true,
-        }]
+      ? [
+          {
+            href: `/schedule/${data.scheduleInfo.id}`,
+            text: `${data.overstaffedShifts} shift${data.overstaffedShifts > 1 ? "s have" : " has"} excess staff — consider flex-home or VTO`,
+            urgent: false,
+            info: true,
+          },
+        ]
       : []),
     ...(data.pendingLeaveCount > 0
-      ? [{ href: "/leave", text: `${data.pendingLeaveCount} leave request${data.pendingLeaveCount > 1 ? "s" : ""} pending approval`, urgent: false }]
+      ? [
+          {
+            href: "/leave",
+            text: `${data.pendingLeaveCount} leave request${data.pendingLeaveCount > 1 ? "s" : ""} pending approval`,
+            urgent: false,
+          },
+        ]
       : []),
     ...(data.openShiftsCount > 0
-      ? [{ href: "/open-shifts", text: `${data.openShiftsCount} open shift${data.openShiftsCount > 1 ? "s" : ""} need${data.openShiftsCount === 1 ? "s" : ""} coverage`, urgent: true }]
+      ? [
+          {
+            href: "/open-shifts",
+            text: `${data.openShiftsCount} open shift${data.openShiftsCount > 1 ? "s" : ""} need${data.openShiftsCount === 1 ? "s" : ""} coverage`,
+            urgent: true,
+          },
+        ]
       : []),
     ...(data.openCallouts > 0
-      ? [{ href: "/callouts", text: `${data.openCallouts} open callout${data.openCallouts > 1 ? "s" : ""} need${data.openCallouts === 1 ? "s" : ""} attention`, urgent: true }]
+      ? [
+          {
+            href: "/callouts",
+            text: `${data.openCallouts} open callout${data.openCallouts > 1 ? "s" : ""} need${data.openCallouts === 1 ? "s" : ""} attention`,
+            urgent: true,
+          },
+        ]
       : []),
     ...(data.pendingSwapsCount > 0
-      ? [{ href: "/swaps", text: `${data.pendingSwapsCount} shift swap${data.pendingSwapsCount > 1 ? "s" : ""} pending review`, urgent: false }]
+      ? [
+          {
+            href: "/swaps",
+            text: `${data.pendingSwapsCount} shift swap${data.pendingSwapsCount > 1 ? "s" : ""} pending review`,
+            urgent: false,
+          },
+        ]
       : []),
     ...(data.prnMissingCount > 0
-      ? [{ href: "/availability", text: `${data.prnMissingCount} PRN staff haven't submitted availability`, urgent: false }]
+      ? [
+          {
+            href: "/availability",
+            text: `${data.prnMissingCount} PRN staff haven't submitted availability`,
+            urgent: false,
+          },
+        ]
       : []),
     ...(data.scheduleEndingSoon
-      ? [{
-          href: "/schedule",
-          text: `Current schedule ends in ${data.scheduleEndingSoon.daysUntilEnd} day${data.scheduleEndingSoon.daysUntilEnd !== 1 ? "s" : ""} — create next period`,
-          urgent: true,
-        }]
+      ? [
+          {
+            href: "/schedule",
+            text: `Current schedule ends in ${data.scheduleEndingSoon.daysUntilEnd} day${data.scheduleEndingSoon.daysUntilEnd !== 1 ? "s" : ""} — create next period`,
+            urgent: true,
+          },
+        ]
       : []),
   ];
 
@@ -200,10 +295,12 @@ export default function DashboardPage() {
           <CardContent className="pt-5 pb-4">
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <p className="font-semibold text-amber-900 dark:text-amber-200">Getting Started</p>
+                <p className="font-semibold text-amber-900 dark:text-amber-200">
+                  Getting Started
+                </p>
                 <p className="mt-0.5 text-sm text-amber-800/70 dark:text-amber-300/70">
-                  Complete these steps to publish your first schedule. You can reopen this
-                  anytime from the ? button in the sidebar.
+                  Complete these steps to publish your first schedule. You can
+                  reopen this anytime from the ? button in the sidebar.
                 </p>
                 <ol className="mt-4 space-y-2">
                   {gettingStartedSteps.map((step, i) => (
@@ -216,17 +313,32 @@ export default function DashboardPage() {
                         }`}
                       >
                         {step.done ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6 9 17l-5-5"/>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M20 6 9 17l-5-5" />
                           </svg>
                         ) : (
                           i + 1
                         )}
                       </span>
                       {step.done ? (
-                        <span className="text-sm text-muted-foreground line-through">{step.label}</span>
+                        <span className="text-sm text-muted-foreground line-through">
+                          {step.label}
+                        </span>
                       ) : (
-                        <Link href={step.href} className="text-sm font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700 dark:text-amber-200">
+                        <Link
+                          href={step.href}
+                          className="text-sm font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700 dark:text-amber-200"
+                        >
                           {step.label} →
                         </Link>
                       )}
@@ -234,7 +346,12 @@ export default function DashboardPage() {
                   ))}
                 </ol>
               </div>
-              <Button variant="ghost" size="sm" className="text-amber-700 hover:text-amber-900" onClick={dismiss}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-amber-700 hover:text-amber-900"
+                onClick={dismiss}
+              >
                 Dismiss
               </Button>
             </div>
@@ -244,121 +361,150 @@ export default function DashboardPage() {
 
       {/* Phase 2 — schedule is live; learn the daily tools by ACTING on seeded
           practice records built from the real roster (the guided practice loop). */}
-      {guide?.showLearn && !learnDismissed && !(learnDone.allComplete && !practice?.active) && (
-        <Card className="mb-6 border-2 border-primary/25 bg-accent/40 animate-slide-up">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <p className="font-semibold">
-                  {learnDone.allComplete
-                    ? "You know the daily tools"
-                    : "Learn daily management"}
-                </p>
+      {guide?.showLearn &&
+        !learnDismissed &&
+        !(learnDone.allComplete && !practice?.active) && (
+          <Card className="mb-6 border-2 border-primary/25 bg-accent/40 animate-slide-up">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="font-semibold">
+                    {learnDone.allComplete
+                      ? "You know the daily tools"
+                      : "Learn daily management"}
+                  </p>
 
-                {!practice?.active ? (
-                  <>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      Your schedule is live. These six tools handle everything that changes
-                      after publishing. Learn them by acting on a few clearly-labeled example
-                      requests.
-                    </p>
-                    <ul className="mt-4 space-y-3">
-                      {LEARN_STEPS.map((item) => (
-                        <li key={item.key} className="flex items-start gap-3">
-                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-primary/40 text-[10px] font-bold text-primary">
-                            {item.order}
-                          </span>
-                          <div>
-                            <p className="text-sm font-medium">{item.title}</p>
-                            <p className="text-xs text-muted-foreground">{item.blurb}</p>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-4 text-xs text-muted-foreground">
-                      Creates a few clearly-labeled example requests using your real roster.
-                      You&apos;ll approve them and watch what happens. Removable afterwards.
-                    </p>
-                    <Button
-                      className="mt-3"
-                      size="sm"
-                      onClick={handleStartPractice}
-                      disabled={practiceBusy}
-                    >
-                      {practiceBusy ? "Starting…" : "Start practice mode"}
-                    </Button>
-                    {practiceError && (
-                      <p className="mt-2 text-xs text-destructive">{practiceError}</p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      {learnDone.allComplete
-                        ? "Remove the practice entries to finish."
-                        : `Practice in progress — ${learnDone.completedCount} of 6 steps done. Follow the highlighted next step in the sidebar.`}
-                    </p>
-                    <ul className="mt-4 space-y-3">
-                      {LEARN_STEPS.map((item) => {
-                        const done = learnDone.done[item.key];
-                        return (
+                  {!practice?.active ? (
+                    <>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        Your schedule is live. These six tools handle everything
+                        that changes after publishing. Learn them by acting on a
+                        few clearly-labeled example requests.
+                      </p>
+                      <ul className="mt-4 space-y-3">
+                        {LEARN_STEPS.map((item) => (
                           <li key={item.key} className="flex items-start gap-3">
-                            <span
-                              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                                done
-                                  ? "bg-primary text-primary-foreground"
-                                  : item.key === learnDone.next
-                                  ? "border-2 border-primary text-primary ring-2 ring-primary/25"
-                                  : "border-2 border-primary/40 text-primary"
-                              }`}
-                            >
-                              {done ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M20 6 9 17l-5-5" />
-                                </svg>
-                              ) : (
-                                item.order
-                              )}
+                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-primary/40 text-[10px] font-bold text-primary">
+                              {item.order}
                             </span>
                             <div>
-                              <Link
-                                href={item.href}
-                                className={`text-sm font-medium underline underline-offset-2 hover:text-primary ${
-                                  done ? "text-muted-foreground line-through" : ""
-                                }`}
-                              >
-                                {item.title} →
-                              </Link>
-                              <p className="text-xs text-muted-foreground">{item.blurb}</p>
+                              <p className="text-sm font-medium">
+                                {item.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.blurb}
+                              </p>
                             </div>
                           </li>
-                        );
-                      })}
-                    </ul>
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      size="sm"
-                      onClick={handleRemovePractice}
-                      disabled={practiceBusy}
-                    >
-                      {practiceBusy ? "Removing…" : "Remove my practice entries"}
-                    </Button>
-                    {practiceRemovedMsg && (
-                      <p className="mt-2 text-xs text-green-700 dark:text-green-400">
-                        Practice entries removed — your schedule is back to normal.
+                        ))}
+                      </ul>
+                      <p className="mt-4 text-xs text-muted-foreground">
+                        Creates a few clearly-labeled example requests using
+                        your real roster. You&apos;ll approve them and watch
+                        what happens. Removable afterwards.
                       </p>
-                    )}
-                  </>
-                )}
+                      <Button
+                        className="mt-3"
+                        size="sm"
+                        onClick={handleStartPractice}
+                        disabled={practiceBusy}
+                      >
+                        {practiceBusy ? "Starting…" : "Start practice mode"}
+                      </Button>
+                      {practiceError && (
+                        <p className="mt-2 text-xs text-destructive">
+                          {practiceError}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {learnDone.allComplete
+                          ? "Remove the practice entries to finish."
+                          : `Practice in progress — ${learnDone.completedCount} of 6 steps done. Follow the highlighted next step in the sidebar.`}
+                      </p>
+                      <ul className="mt-4 space-y-3">
+                        {LEARN_STEPS.map((item) => {
+                          const done = learnDone.done[item.key];
+                          return (
+                            <li
+                              key={item.key}
+                              className="flex items-start gap-3"
+                            >
+                              <span
+                                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                                  done
+                                    ? "bg-primary text-primary-foreground"
+                                    : item.key === learnDone.next
+                                      ? "border-2 border-primary text-primary ring-2 ring-primary/25"
+                                      : "border-2 border-primary/40 text-primary"
+                                }`}
+                              >
+                                {done ? (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="11"
+                                    height="11"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="3"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M20 6 9 17l-5-5" />
+                                  </svg>
+                                ) : (
+                                  item.order
+                                )}
+                              </span>
+                              <div>
+                                <Link
+                                  href={item.href}
+                                  className={`text-sm font-medium underline underline-offset-2 hover:text-primary ${
+                                    done
+                                      ? "text-muted-foreground line-through"
+                                      : ""
+                                  }`}
+                                >
+                                  {item.title} →
+                                </Link>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.blurb}
+                                </p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      <Button
+                        variant="outline"
+                        className="mt-4"
+                        size="sm"
+                        onClick={handleRemovePractice}
+                        disabled={practiceBusy}
+                      >
+                        {practiceBusy
+                          ? "Removing…"
+                          : "Remove my practice entries"}
+                      </Button>
+                      {practiceRemovedMsg && (
+                        <p className="mt-2 text-xs text-green-700 dark:text-green-400">
+                          Practice entries removed — your schedule is back to
+                          normal.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" onClick={dismissLearn}>
+                  Dismiss
+                </Button>
               </div>
-              <Button variant="ghost" size="sm" onClick={dismissLearn}>
-                Dismiss
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Current schedule — primary CTA with gradient hero */}
       <Card className="mb-6 overflow-hidden border-0 shadow-lg p-0">
@@ -370,22 +516,31 @@ export default function DashboardPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-white/80">
                     Current Schedule
                   </p>
-                  <p className="mt-1 text-2xl font-bold text-white">{data.scheduleInfo.name}</p>
+                  <p className="mt-1 text-2xl font-bold text-white">
+                    {data.scheduleInfo.name}
+                  </p>
                   <div className="mt-3 flex items-center gap-2">
-                    <Badge
-                      className="bg-white/20 text-white border-white/30 backdrop-blur-sm"
-                    >
+                    <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm">
                       {data.scheduleInfo.status}
                     </Badge>
                     <span className="text-sm text-white/90">
-                      {new Date(data.scheduleInfo.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      {new Date(data.scheduleInfo.startDate).toLocaleDateString(
+                        "en-US",
+                        { month: "short", day: "numeric" },
+                      )}
                       {" – "}
-                      {new Date(data.scheduleInfo.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {new Date(data.scheduleInfo.endDate).toLocaleDateString(
+                        "en-US",
+                        { month: "short", day: "numeric", year: "numeric" },
+                      )}
                     </span>
                   </div>
                 </div>
                 <Link href={`/schedule/${data.scheduleInfo.id}`}>
-                  <Button variant="secondary" className="!bg-white !text-primary hover:!bg-white/90 shadow-sm hover:shadow-md transition-shadow">
+                  <Button
+                    variant="secondary"
+                    className="!bg-white !text-primary hover:!bg-white/90 shadow-sm hover:shadow-md transition-shadow"
+                  >
                     Open Schedule →
                   </Button>
                 </Link>
@@ -396,13 +551,18 @@ export default function DashboardPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-white/80">
                     Current Schedule
                   </p>
-                  <p className="mt-1 text-2xl font-bold text-white">No active schedule</p>
+                  <p className="mt-1 text-2xl font-bold text-white">
+                    No active schedule
+                  </p>
                   <p className="mt-2 text-sm text-white/90">
                     Create a schedule period to get started.
                   </p>
                 </div>
                 <Link href="/schedule">
-                  <Button variant="secondary" className="!bg-white !text-primary hover:!bg-white/90 shadow-sm hover:shadow-md transition-shadow">
+                  <Button
+                    variant="secondary"
+                    className="!bg-white !text-primary hover:!bg-white/90 shadow-sm hover:shadow-md transition-shadow"
+                  >
                     Create Schedule →
                   </Button>
                 </Link>
@@ -418,13 +578,29 @@ export default function DashboardPage() {
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/10">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-green-600"
+                >
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <path d="m9 11 3 3L22 4" />
                 </svg>
               </div>
               <div>
-                <p className="font-semibold text-green-900 dark:text-green-200">All Clear</p>
-                <p className="text-sm text-green-700 dark:text-green-300">Everything looks good — no action needed.</p>
+                <p className="font-semibold text-green-900 dark:text-green-200">
+                  All Clear
+                </p>
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  Everything looks good — no action needed.
+                </p>
               </div>
             </div>
           </CardContent>
@@ -434,8 +610,21 @@ export default function DashboardPage() {
           <CardContent className="pt-5 pb-4">
             <div className="mb-4 flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/10">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-600">
-                  <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-orange-600"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 8v4" />
+                  <path d="M12 16h.01" />
                 </svg>
               </div>
               <div>
@@ -443,7 +632,9 @@ export default function DashboardPage() {
                   Needs Attention
                 </p>
                 <p className="text-xs text-orange-700 dark:text-orange-300">
-                  {attentionItems.length} item{attentionItems.length > 1 ? "s" : ""} require{attentionItems.length === 1 ? "s" : ""} action
+                  {attentionItems.length} item
+                  {attentionItems.length > 1 ? "s" : ""} require
+                  {attentionItems.length === 1 ? "s" : ""} action
                 </p>
               </div>
             </div>
@@ -456,57 +647,111 @@ export default function DashboardPage() {
                     item.urgent
                       ? "border-red-300 hover:border-red-400 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/30 shadow-red-100"
                       : item.info
-                      ? "border-blue-300 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950/30 shadow-blue-100"
-                      : "border-yellow-300 hover:border-yellow-400 hover:bg-yellow-50 dark:border-yellow-800 dark:hover:bg-yellow-950/30 shadow-yellow-100"
+                        ? "border-blue-300 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950/30 shadow-blue-100"
+                        : "border-yellow-300 hover:border-yellow-400 hover:bg-yellow-50 dark:border-yellow-800 dark:hover:bg-yellow-950/30 shadow-yellow-100"
                   }`}
                 >
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                    item.urgent
-                      ? "bg-red-500 text-white"
-                      : item.info
-                      ? "bg-blue-500 text-white"
-                      : "bg-yellow-500 text-white"
-                  }`}>
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                      item.urgent
+                        ? "bg-red-500 text-white"
+                        : item.info
+                          ? "bg-blue-500 text-white"
+                          : "bg-yellow-500 text-white"
+                    }`}
+                  >
                     {item.urgent ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v4" />
+                        <path d="M12 16h.01" />
                       </svg>
                     ) : item.info ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 16v-4" />
+                        <path d="M12 8h.01" />
                       </svg>
                     ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                        <path d="M12 9v4" />
+                        <path d="M12 17h.01" />
                       </svg>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold ${
-                      item.urgent
-                        ? "text-red-900 dark:text-red-100"
-                        : item.info
-                        ? "text-blue-900 dark:text-blue-100"
-                        : "text-yellow-900 dark:text-yellow-100"
-                    }`}>
+                    <p
+                      className={`text-sm font-semibold ${
+                        item.urgent
+                          ? "text-red-900 dark:text-red-100"
+                          : item.info
+                            ? "text-blue-900 dark:text-blue-100"
+                            : "text-yellow-900 dark:text-yellow-100"
+                      }`}
+                    >
                       {item.text}
                     </p>
                   </div>
-                  <div className={`flex items-center justify-center h-8 w-8 rounded-lg transition-colors ${
-                    item.urgent
-                      ? "bg-red-100 dark:bg-red-900/30"
-                      : item.info
-                      ? "bg-blue-100 dark:bg-blue-900/30"
-                      : "bg-yellow-100 dark:bg-yellow-900/30"
-                  }`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform group-hover:translate-x-0.5 ${
+                  <div
+                    className={`flex items-center justify-center h-8 w-8 rounded-lg transition-colors ${
                       item.urgent
-                        ? "text-red-600 dark:text-red-400"
+                        ? "bg-red-100 dark:bg-red-900/30"
                         : item.info
-                        ? "text-blue-600 dark:text-blue-400"
-                        : "text-yellow-600 dark:text-yellow-400"
-                    }`}>
-                      <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                          ? "bg-blue-100 dark:bg-blue-900/30"
+                          : "bg-yellow-100 dark:bg-yellow-900/30"
+                    }`}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`transition-transform group-hover:translate-x-0.5 ${
+                        item.urgent
+                          ? "text-red-600 dark:text-red-400"
+                          : item.info
+                            ? "text-blue-600 dark:text-blue-400"
+                            : "text-yellow-600 dark:text-yellow-400"
+                      }`}
+                    >
+                      <path d="M5 12h14" />
+                      <path d="m12 5 7 7-7 7" />
                     </svg>
                   </div>
                 </Link>
@@ -520,9 +765,13 @@ export default function DashboardPage() {
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <Card className="animate-fade-in" style={{ animationDelay: "0s" }}>
           <CardContent className="pt-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Active Staff</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Active Staff
+            </p>
             <div className="flex items-end justify-between mt-2">
-              <p className="text-3xl font-bold animate-slide-up">{data.staffCount}</p>
+              <p className="text-3xl font-bold animate-slide-up">
+                {data.staffCount}
+              </p>
               <Sparkline
                 data={sparklineData.staff}
                 width={60}
@@ -542,7 +791,9 @@ export default function DashboardPage() {
 
         <Card className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
           <CardContent className="pt-4 flex flex-col items-center">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground self-start mb-2">Fill Rate</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground self-start mb-2">
+              Fill Rate
+            </p>
             <DoughnutChart
               percentage={data.fillRate}
               size={100}
@@ -554,13 +805,20 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className={`animate-fade-in ${data.understaffedShifts > 0 ? "border-yellow-400" : ""}`} style={{ animationDelay: "0.2s" }}>
+        <Card
+          className={`animate-fade-in ${data.understaffedShifts > 0 ? "border-yellow-400" : ""}`}
+          style={{ animationDelay: "0.2s" }}
+        >
           <CardContent className="pt-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Understaffed Shifts</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Understaffed Shifts
+            </p>
             <div className="flex items-end justify-between mt-2">
               <p
                 className={`text-3xl font-bold animate-slide-up ${
-                  data.understaffedShifts > 0 ? "text-yellow-600" : "text-green-600"
+                  data.understaffedShifts > 0
+                    ? "text-yellow-600"
+                    : "text-green-600"
                 }`}
               >
                 {data.understaffedShifts}
@@ -579,13 +837,20 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className={`animate-fade-in ${data.overstaffedShifts > 0 ? "border-blue-400" : ""}`} style={{ animationDelay: "0.3s" }}>
+        <Card
+          className={`animate-fade-in ${data.overstaffedShifts > 0 ? "border-blue-400" : ""}`}
+          style={{ animationDelay: "0.3s" }}
+        >
           <CardContent className="pt-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Excess Staff Shifts</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Excess Staff Shifts
+            </p>
             <div className="flex items-end justify-between mt-2">
               <p
                 className={`text-3xl font-bold animate-slide-up ${
-                  data.overstaffedShifts > 0 ? "text-blue-600" : "text-green-600"
+                  data.overstaffedShifts > 0
+                    ? "text-blue-600"
+                    : "text-green-600"
                 }`}
               >
                 {data.overstaffedShifts}
@@ -599,14 +864,21 @@ export default function DashboardPage() {
               />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {data.overstaffedShifts > 0 ? "Flex-home candidates" : "Staffing on target"}
+              {data.overstaffedShifts > 0
+                ? "Flex-home candidates"
+                : "Staffing on target"}
             </p>
           </CardContent>
         </Card>
 
-        <Card className={`animate-fade-in ${data.openCallouts > 0 ? "border-red-400" : ""}`} style={{ animationDelay: "0.4s" }}>
+        <Card
+          className={`animate-fade-in ${data.openCallouts > 0 ? "border-red-400" : ""}`}
+          style={{ animationDelay: "0.4s" }}
+        >
           <CardContent className="pt-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Open Callouts</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Open Callouts
+            </p>
             <div className="flex items-end justify-between mt-2">
               <p
                 className={`text-3xl font-bold animate-slide-up ${
@@ -659,8 +931,19 @@ export default function DashboardPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-primary"
+            >
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
             </svg>
             Recent Activity
           </CardTitle>

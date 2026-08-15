@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { fetchJson } from "@/lib/fetch-json";
 
 interface Schedule {
   id: string;
@@ -61,18 +62,20 @@ function ScoreBar({ label, score }: { label: string; score: number | null }) {
     pct >= 80
       ? "linear-gradient(90deg, #10b981 0%, #059669 100%)"
       : pct >= 60
-      ? "linear-gradient(90deg, #f59e0b 0%, #d97706 100%)"
-      : "linear-gradient(90deg, #ef4444 0%, #dc2626 100%)";
+        ? "linear-gradient(90deg, #f59e0b 0%, #d97706 100%)"
+        : "linear-gradient(90deg, #ef4444 0%, #dc2626 100%)";
 
   return (
     <div className="flex items-center gap-2">
-      <span className="w-20 text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="w-20 text-xs font-medium text-muted-foreground">
+        {label}
+      </span>
       <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden shadow-inner">
         <div
           className="h-3 rounded-full transition-all duration-500 shadow-sm"
           style={{
             width: `${pct}%`,
-            background: gradient
+            background: gradient,
           }}
         />
       </div>
@@ -86,10 +89,11 @@ function ScenariosPageContent() {
   const { addToast } = useToast();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string>(
-    searchParams.get("scheduleId") ?? ""
+    searchParams.get("scheduleId") ?? "",
   );
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -103,9 +107,18 @@ function ScenariosPageContent() {
 
   const fetchScenarios = useCallback(async (scheduleId: string) => {
     setLoading(true);
-    const res = await fetch(`/api/scenarios?scheduleId=${scheduleId}`);
-    setScenarios(await res.json());
-    setLoading(false);
+    setLoadError(null);
+    try {
+      setScenarios(
+        await fetchJson<Scenario[]>(`/api/scenarios?scheduleId=${scheduleId}`),
+      );
+    } catch {
+      setLoadError(
+        "Couldn't load schedule variants. The server may be restarting — try again in a moment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -142,7 +155,14 @@ function ScenariosPageContent() {
 
   async function handleGenerate() {
     if (!selectedScheduleId) return;
-    setJobStatus({ jobId: "", status: "pending", progress: 0, currentPhase: "Starting…", error: null, warnings: [] });
+    setJobStatus({
+      jobId: "",
+      status: "pending",
+      progress: 0,
+      currentPhase: "Starting…",
+      error: null,
+      warnings: [],
+    });
 
     const res = await fetch("/api/scenarios/generate", {
       method: "POST",
@@ -152,7 +172,11 @@ function ScenariosPageContent() {
 
     if (!res.ok) {
       const err = await res.json();
-      setJobStatus((prev) => ({ ...prev!, status: "failed", error: err.error ?? "Unknown error" }));
+      setJobStatus((prev) => ({
+        ...prev!,
+        status: "failed",
+        error: err.error ?? "Unknown error",
+      }));
       return;
     }
 
@@ -205,15 +229,18 @@ function ScenariosPageContent() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Schedule Variants</h1>
         <p className="mt-1 text-muted-foreground">
-          Generate and compare schedule variants. The Balanced schedule is applied
-          automatically; use Apply to switch to a different variant.
+          Generate and compare schedule variants. The Balanced schedule is
+          applied automatically; use Apply to switch to a different variant.
         </p>
       </div>
 
       <GuideNudge />
 
       <div className="mb-6 flex items-center gap-4">
-        <Select value={selectedScheduleId} onValueChange={setSelectedScheduleId}>
+        <Select
+          value={selectedScheduleId}
+          onValueChange={setSelectedScheduleId}
+        >
           <SelectTrigger className="w-64">
             <SelectValue placeholder="Select a schedule" />
           </SelectTrigger>
@@ -238,19 +265,33 @@ function ScenariosPageContent() {
       {isGenerating && jobStatus && (
         <div className="mb-6 rounded-lg border bg-muted/30 p-4">
           {(() => {
-            const isPending = jobStatus.status === "pending" || jobStatus.progress < 5;
+            const isPending =
+              jobStatus.status === "pending" || jobStatus.progress < 5;
             return (
               <>
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-medium flex items-center gap-1.5">
                     {isPending && (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-muted-foreground">
-                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="animate-spin text-muted-foreground"
+                      >
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                       </svg>
                     )}
                     {jobStatus.currentPhase ?? "Starting…"}
                   </span>
-                  <span className="text-sm text-muted-foreground">{jobStatus.progress}%</span>
+                  <span className="text-sm text-muted-foreground">
+                    {jobStatus.progress}%
+                  </span>
                 </div>
                 <div className="h-3 w-full rounded-full bg-muted overflow-hidden shadow-inner">
                   {isPending ? (
@@ -276,7 +317,8 @@ function ScenariosPageContent() {
               { label: "Fairness", sub: "Weekend equity", start: 45, done: 65 },
               { label: "Cost", sub: "Min. overtime", start: 65, done: 85 },
             ].map(({ label, sub, start, done }) => {
-              const active = jobStatus.progress >= start && jobStatus.progress < done;
+              const active =
+                jobStatus.progress >= start && jobStatus.progress < done;
               const complete = jobStatus.progress >= done;
               return (
                 <div
@@ -285,24 +327,47 @@ function ScenariosPageContent() {
                     complete
                       ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 shadow-sm"
                       : active
-                      ? "gradient-primary text-white font-medium shadow-md animate-pulse"
-                      : "bg-muted/50 text-muted-foreground"
+                        ? "gradient-primary text-white font-medium shadow-md animate-pulse"
+                        : "bg-muted/50 text-muted-foreground"
                   }`}
                 >
                   <div className="flex items-center justify-center gap-1">
                     {complete && (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6 9 17l-5-5"/>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M20 6 9 17l-5-5" />
                       </svg>
                     )}
                     {active && (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="animate-spin"
+                      >
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                       </svg>
                     )}
                     <span>{label}</span>
                   </div>
-                  <div className="mt-1 text-[10px] font-normal opacity-75">{sub}</div>
+                  <div className="mt-1 text-[10px] font-normal opacity-75">
+                    {sub}
+                  </div>
                 </div>
               );
             })}
@@ -333,7 +398,8 @@ function ScenariosPageContent() {
           <ul className="space-y-1 text-xs text-yellow-700">
             {jobStatus.warnings.map((w) => (
               <li key={w.shiftId}>
-                {w.date} {w.shiftType} ({w.unit}): {w.assigned}/{w.required} filled
+                {w.date} {w.shiftType} ({w.unit}): {w.assigned}/{w.required}{" "}
+                filled
                 {w.reasons.length > 0 && ` — ${w.reasons.join("; ")}`}
               </li>
             ))}
@@ -343,103 +409,136 @@ function ScenariosPageContent() {
 
       {loading ? (
         <p className="text-muted-foreground">Loading scenarios…</p>
+      ) : loadError ? (
+        <div className="flex flex-col items-start gap-3">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchScenarios(selectedScheduleId)}
+          >
+            Try again
+          </Button>
+        </div>
       ) : scenarios.length === 0 && !isGenerating ? (
         <div className="rounded-lg border-2 border-dashed border-muted p-12 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-              <line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-primary"
+            >
+              <line x1="6" x2="6" y1="3" y2="15" />
+              <circle cx="18" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <path d="M18 9a9 9 0 0 1-9 9" />
             </svg>
           </div>
           <p className="text-lg font-medium">No schedule variants yet</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Select a schedule above and click Generate Schedule to create three optimized variants
+            Select a schedule above and click Generate Schedule to create three
+            optimized variants
           </p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {scenarios.map((s) => {
             const focus: Record<string, string> = {
-              "Balanced": "Balances all priorities equally",
-              "Fairness Optimized": "Maximises equal weekend & holiday distribution",
+              Balanced: "Balances all priorities equally",
+              "Fairness Optimized":
+                "Maximises equal weekend & holiday distribution",
               "Cost Optimized": "Minimises overtime and agency/float use",
             };
             return (
-            <Card
-              key={s.id}
-              className={`transition-all duration-300 ${
-                s.status === "selected"
-                  ? "border-primary shadow-xl ring-2 ring-primary/20 animate-scale-in"
-                  : s.status === "rejected"
-                  ? "border-red-200 opacity-60"
-                  : "hover:shadow-lg hover:-translate-y-1"
-              }`}
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">{s.name}</CardTitle>
-                  <Badge
-                    variant={
-                      s.status === "selected"
-                        ? "default"
-                        : s.status === "rejected"
-                        ? "destructive"
-                        : "secondary"
-                    }
-                  >
-                    {s.status === "selected" ? "active" : s.status}
-                  </Badge>
-                </div>
-                {focus[s.name] && (
-                  <p className="text-xs font-medium text-primary/70">{focus[s.name]}</p>
-                )}
-                {s.description && (
-                  <p className="text-xs text-muted-foreground">{s.description}</p>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-2">
-                  <ScoreBar label="Coverage" score={s.coverageScore} />
-                  <ScoreBar label="Fairness" score={s.fairnessScore} />
-                  <ScoreBar label="Cost" score={s.costScore} />
-                  <ScoreBar label="Preference" score={s.preferenceScore} />
-                  <ScoreBar label="Skill Mix" score={s.skillMixScore} />
-                </div>
-
-                <div className="flex items-center justify-between border-t pt-2">
-                  <div>
-                    <span className="text-sm font-medium">Overall: </span>
-                    <span className="text-lg font-bold">
-                      {s.overallScore !== null
-                        ? Math.round((1 - s.overallScore) * 100) + "%"
-                        : "-"}
-                    </span>
+              <Card
+                key={s.id}
+                className={`transition-all duration-300 ${
+                  s.status === "selected"
+                    ? "border-primary shadow-xl ring-2 ring-primary/20 animate-scale-in"
+                    : s.status === "rejected"
+                      ? "border-red-200 opacity-60"
+                      : "hover:shadow-lg hover:-translate-y-1"
+                }`}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">{s.name}</CardTitle>
+                    <Badge
+                      variant={
+                        s.status === "selected"
+                          ? "default"
+                          : s.status === "rejected"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                    >
+                      {s.status === "selected" ? "active" : s.status}
+                    </Badge>
                   </div>
-                  {s.status === "selected" ? (
-                    <span className="text-xs text-green-600 font-medium">Active schedule</span>
-                  ) : (
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        onClick={() => handleApply(s.id)}
-                        disabled={applyingId === s.id}
-                      >
-                        {applyingId === s.id ? "Applying…" : "Apply"}
-                      </Button>
-                      {s.status === "draft" && (
+                  {focus[s.name] && (
+                    <p className="text-xs font-medium text-primary/70">
+                      {focus[s.name]}
+                    </p>
+                  )}
+                  {s.description && (
+                    <p className="text-xs text-muted-foreground">
+                      {s.description}
+                    </p>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2">
+                    <ScoreBar label="Coverage" score={s.coverageScore} />
+                    <ScoreBar label="Fairness" score={s.fairnessScore} />
+                    <ScoreBar label="Cost" score={s.costScore} />
+                    <ScoreBar label="Preference" score={s.preferenceScore} />
+                    <ScoreBar label="Skill Mix" score={s.skillMixScore} />
+                  </div>
+
+                  <div className="flex items-center justify-between border-t pt-2">
+                    <div>
+                      <span className="text-sm font-medium">Overall: </span>
+                      <span className="text-lg font-bold">
+                        {s.overallScore !== null
+                          ? Math.round((1 - s.overallScore) * 100) + "%"
+                          : "-"}
+                      </span>
+                    </div>
+                    {s.status === "selected" ? (
+                      <span className="text-xs text-green-600 font-medium">
+                        Active schedule
+                      </span>
+                    ) : (
+                      <div className="flex gap-1">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => handleReject(s.id)}
+                          onClick={() => handleApply(s.id)}
+                          disabled={applyingId === s.id}
                         >
-                          Reject
+                          {applyingId === s.id ? "Applying…" : "Apply"}
                         </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          );
+                        {s.status === "draft" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleReject(s.id)}
+                          >
+                            Reject
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
           })}
         </div>
       )}
