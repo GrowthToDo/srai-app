@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.9.1] - 2026-08-15
+
+### Fixed
+
+- **Nurse calendar: leave-released shifts now read as released.** An
+  assignment cancelled by approved leave renders red + struck through (same
+  treatment as a callout) next to the green leave chip, instead of a normal
+  dark chip that looked still-owned. Tapping it shows "You're released from
+  this shift" instead of offering the request form again.
+
+---
+
 ## [1.9.0] - 2026-08-15
 
 ### Added

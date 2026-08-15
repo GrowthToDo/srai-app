@@ -413,12 +413,20 @@ export default function MySchedulePage() {
                   {selected.status === "called_out" && (
                     <Badge variant="destructive">Called out</Badge>
                   )}
+                  {selected.status === "cancelled" && (
+                    <Badge variant="destructive">Released</Badge>
+                  )}
                 </div>
 
                 {selected.status === "called_out" ? (
                   <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
                     You&apos;ve already called out of this shift. Your manager
                     is arranging coverage.
+                  </div>
+                ) : selected.status === "cancelled" ? (
+                  <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+                    You&apos;re released from this shift — your approved time
+                    off covers this date and your manager is arranging coverage.
                   </div>
                 ) : hasPendingForSelected ? (
                   <div className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">

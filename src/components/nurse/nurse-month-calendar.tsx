@@ -61,13 +61,23 @@ export function NurseMonthCalendar({
   return (
     <div className="w-full">
       <div className="mb-3 flex items-center justify-between">
-        <Button variant="outline" size="icon-sm" onClick={onPrevMonth} aria-label="Previous month">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={onPrevMonth}
+          aria-label="Previous month"
+        >
           <ChevronLeft className="size-4" />
         </Button>
         <h3 className="text-base font-semibold">
           {format(currentMonth, "MMMM yyyy")}
         </h3>
-        <Button variant="outline" size="icon-sm" onClick={onNextMonth} aria-label="Next month">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={onNextMonth}
+          aria-label="Next month"
+        >
           <ChevronRight className="size-4" />
         </Button>
       </div>
@@ -108,7 +118,9 @@ export function NurseMonthCalendar({
                 className={cn(
                   "min-h-[56px] border-t border-r border-border p-1 text-left align-top transition-colors",
                   weekend && "bg-muted/20",
-                  firstShift ? "cursor-pointer hover:bg-accent" : "cursor-default"
+                  firstShift
+                    ? "cursor-pointer hover:bg-accent"
+                    : "cursor-default",
                 )}
               >
                 <div
@@ -116,7 +128,7 @@ export function NurseMonthCalendar({
                     "mb-0.5 inline-flex size-5 items-center justify-center rounded-full text-[10px] font-medium",
                     today
                       ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground"
+                      : "text-muted-foreground",
                   )}
                 >
                   {format(date, "d")}
@@ -134,13 +146,16 @@ export function NurseMonthCalendar({
                     key={s.assignmentId}
                     className={cn(
                       "mb-0.5 truncate rounded px-1 py-px text-[9px] font-medium text-white",
-                      s.status === "called_out"
+                      // cancelled = released by approved leave; render like a
+                      // callout (red + struck) so the nurse sees the shift is
+                      // no longer theirs, next to the green leave chip.
+                      s.status === "called_out" || s.status === "cancelled"
                         ? "bg-destructive/80 line-through"
                         : s.shiftType === "day"
                           ? "bg-[#2d5a4a]"
                           : s.shiftType === "night"
                             ? "bg-[#1a2332]"
-                            : "bg-gray-500"
+                            : "bg-gray-500",
                     )}
                   >
                     {s.shiftType === "day"
