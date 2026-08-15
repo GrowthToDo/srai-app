@@ -22,27 +22,82 @@ const mockAll = vi.hoisted(() => vi.fn());
 // ─── Module mocks ──────────────────────────────────────────────────────────
 
 vi.mock("drizzle-orm", () => ({
-  eq:  vi.fn(),
+  eq: vi.fn(),
   and: vi.fn(),
-  ne:  vi.fn(),
+  ne: vi.fn(),
   gte: vi.fn(),
   lte: vi.fn(),
+  isNotNull: vi.fn(),
 }));
 
+// The shared scoring module's countRecentPickups touches the DB with its own
+// queries — stub it so this test's sequence-primed .all() mock stays aligned
+// with getEscalationOptions' own query order. The adjustment math itself has
+// dedicated tests in src/__tests__/coverage/scoring.test.ts.
+vi.mock("@/lib/coverage/scoring", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/coverage/scoring")>();
+  return { ...actual, countRecentPickups: () => 0 };
+});
+
 vi.mock("@/db/schema", () => ({
-  staff:           { id: "s$id", role: "s$role", icuCompetencyLevel: "s$level",
-                     isChargeNurseQualified: "s$charge", reliabilityRating: "s$rel",
-                     isActive: "s$active", employmentType: "s$empType",
-                     firstName: "s$first", lastName: "s$last" },
-  staffLeave:      { staffId: "sl$staffId", status: "sl$status",
-                     startDate: "sl$start", endDate: "sl$end" },
-  assignment:      { id: "a$id", staffId: "a$staffId", status: "a$status",
-                     shiftId: "a$shiftId", isChargeNurse: "a$charge" },
-  shift:           { id: "sh$id", date: "sh$date", scheduleId: "sh$scheduleId",
-                     shiftDefinitionId: "sh$shiftDefId" },
-  shiftDefinition: { id: "sd$id", startTime: "sd$startTime", endTime: "sd$endTime",
-                     durationHours: "sd$duration", shiftType: "sd$type" },
-  schedule:        { id: "sched$id", startDate: "sched$startDate", endDate: "sched$endDate" },
+  staff: {
+    id: "s$id",
+    role: "s$role",
+    icuCompetencyLevel: "s$level",
+    isChargeNurseQualified: "s$charge",
+    reliabilityRating: "s$rel",
+    isActive: "s$active",
+    employmentType: "s$empType",
+    firstName: "s$first",
+    lastName: "s$last",
+  },
+  callout: {
+    id: "c$id",
+    replacementStaffId: "c$repl",
+    resolvedAt: "c$resolved",
+  },
+  openShift: {
+    id: "os$id",
+    filledByStaffId: "os$filledBy",
+    filledAt: "os$filledAt",
+  },
+  prnAvailability: {
+    id: "prn$id",
+    staffId: "prn$staffId",
+    availableDates: "prn$dates",
+  },
+  staffLeave: {
+    staffId: "sl$staffId",
+    status: "sl$status",
+    startDate: "sl$start",
+    endDate: "sl$end",
+  },
+  assignment: {
+    id: "a$id",
+    staffId: "a$staffId",
+    status: "a$status",
+    shiftId: "a$shiftId",
+    isChargeNurse: "a$charge",
+  },
+  shift: {
+    id: "sh$id",
+    date: "sh$date",
+    scheduleId: "sh$scheduleId",
+    shiftDefinitionId: "sh$shiftDefId",
+  },
+  shiftDefinition: {
+    id: "sd$id",
+    startTime: "sd$startTime",
+    endTime: "sd$endTime",
+    durationHours: "sd$duration",
+    shiftType: "sd$type",
+  },
+  schedule: {
+    id: "sched$id",
+    startDate: "sched$startDate",
+    endDate: "sched$endDate",
+  },
 }));
 
 /**
@@ -53,11 +108,11 @@ vi.mock("@/db/schema", () => ({
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const chain: any = {};
-chain.get      = mockGet;
-chain.all      = mockAll;
-chain.where    = () => chain;
+chain.get = mockGet;
+chain.all = mockAll;
+chain.where = () => chain;
 chain.innerJoin = () => chain;
-chain.from     = () => chain;
+chain.from = () => chain;
 
 vi.mock("@/db", () => ({ db: { select: () => chain } }));
 
@@ -67,10 +122,10 @@ import { getEscalationOptions, weekBounds } from "@/lib/callout/escalation";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const SHIFT_ID       = "shift-001";
-const CALLED_OUT_ID  = "staff-called-001";
-const CANDIDATE_ID   = "staff-cand-001";
-const SCHED_ID       = "sched-001";
+const SHIFT_ID = "shift-001";
+const CALLED_OUT_ID = "staff-called-001";
+const CANDIDATE_ID = "staff-cand-001";
+const SCHED_ID = "sched-001";
 
 // ─── Factory helpers ───────────────────────────────────────────────────────
 
@@ -93,7 +148,7 @@ function makeCandidate(overrides: Record<string, unknown> = {}) {
 function makeShiftRow(overrides: Record<string, unknown> = {}) {
   return {
     id: SHIFT_ID,
-    date: "2026-03-10",   // Tuesday
+    date: "2026-03-10", // Tuesday
     startTime: "07:00",
     endTime: "19:00",
     durationHours: 12,
@@ -124,39 +179,45 @@ function makeShiftRow(overrides: Record<string, unknown> = {}) {
  *   6. weekendRows (only if sched returned a valid object)
  */
 function setupQueues({
-  shiftRow          = makeShiftRow(),
-  calledOut         = { role: "RN", icuCompetencyLevel: 3 },
+  shiftRow = makeShiftRow(),
+  calledOut = { role: "RN", icuCompetencyLevel: 3 },
   calledOutAssignment = { isChargeNurse: false },
-  candidates        = [makeCandidate()],
-  sched             = { startDate: "2026-02-01", endDate: "2026-03-31" } as Record<string, unknown> | undefined,
-  weekendRows       = [] as Array<{ date: string }>,
-  consecutiveDays   = 0,   // number of days BEFORE the shift that have assignments
-  hoursThisWeek     = 0,
+  candidates = [makeCandidate()],
+  sched = { startDate: "2026-02-01", endDate: "2026-03-31" } as
+    Record<string, unknown> | undefined,
+  weekendRows = [] as Array<{ date: string }>,
+  consecutiveDays = 0, // number of days BEFORE the shift that have assignments
+  hoursThisWeek = 0,
 }: {
-  shiftRow?:            Record<string, unknown>;
-  calledOut?:           Record<string, unknown>;
+  shiftRow?: Record<string, unknown>;
+  calledOut?: Record<string, unknown>;
   calledOutAssignment?: Record<string, unknown>;
-  candidates?:          Record<string, unknown>[];
-  sched?:               Record<string, unknown> | undefined;
-  weekendRows?:         Array<{ date: string }>;
-  consecutiveDays?:     number;
-  hoursThisWeek?:       number;
+  candidates?: Record<string, unknown>[];
+  sched?: Record<string, unknown> | undefined;
+  weekendRows?: Array<{ date: string }>;
+  consecutiveDays?: number;
+  hoursThisWeek?: number;
 } = {}) {
   // Build weeklyRaw entries with the right staffId so the Map lookup works
-  const weeklyRaw = hoursThisWeek > 0
-    ? candidates.map(c => ({ staffId: c.id, status: "active", durationHours: hoursThisWeek }))
-    : [];
+  const weeklyRaw =
+    hoursThisWeek > 0
+      ? candidates.map((c) => ({
+          staffId: c.id,
+          status: "active",
+          durationHours: hoursThisWeek,
+        }))
+      : [];
 
   // --- .get() sequence ---
   mockGet
-    .mockReturnValueOnce(shiftRow)            // 1. shiftRow
-    .mockReturnValueOnce(calledOut)           // 2. calledOut
-    .mockReturnValueOnce(calledOutAssignment);// 3. calledOutAssignment
+    .mockReturnValueOnce(shiftRow) // 1. shiftRow
+    .mockReturnValueOnce(calledOut) // 2. calledOut
+    .mockReturnValueOnce(calledOutAssignment); // 3. calledOutAssignment
 
   // Per-candidate: schedule bounds (countWeekendsInSchedulePeriod)
   // Called once per candidate (after eligibility checks)
   for (let i = 0; i < candidates.length; i++) {
-    mockGet.mockReturnValueOnce(sched);       // 4 (per candidate). sched
+    mockGet.mockReturnValueOnce(sched); // 4 (per candidate). sched
   }
 
   // Per-candidate: consecutive day checks (countConsecutiveDaysBefore)
@@ -170,11 +231,12 @@ function setupQueues({
 
   // --- .all() sequence ---
   mockAll
-    .mockReturnValueOnce(candidates)   // 1. allStaff
-    .mockReturnValueOnce([])           // 2. existingAssignments
-    .mockReturnValueOnce([])           // 3. nearbyRaw (D-1/D/D+1)
-    .mockReturnValueOnce(weeklyRaw)    // 4. weeklyRaw
-    .mockReturnValueOnce([]);          // 5. activeLeaves
+    .mockReturnValueOnce(candidates) // 1. allStaff
+    .mockReturnValueOnce([]) // 2. existingAssignments
+    .mockReturnValueOnce([]) // 3. nearbyRaw (D-1/D/D+1)
+    .mockReturnValueOnce(weeklyRaw) // 4. weeklyRaw
+    .mockReturnValueOnce([]) // 5. activeLeaves
+    .mockReturnValueOnce([]); // 6. prnAvailability rows (PRN gap fix)
 
   // countWeekendsInSchedulePeriod weekend rows — only called if sched is truthy
   if (sched) {
@@ -192,15 +254,24 @@ describe("weekBounds — Monday–Sunday week (must match scheduler getWeekStart
   // week, so a nurse working Mon+Wed+Sun (36h) showed as 24h in the callout panel.
   it("includes the trailing Sunday for a Friday callout shift", () => {
     // Callout on Fri 2026-06-26 → week must be Mon 06-22 … Sun 06-28.
-    expect(weekBounds("2026-06-26")).toEqual({ weekStart: "2026-06-22", weekEnd: "2026-06-28" });
+    expect(weekBounds("2026-06-26")).toEqual({
+      weekStart: "2026-06-22",
+      weekEnd: "2026-06-28",
+    });
   });
 
   it("keeps a Sunday in its own Mon–Sun week, not the next", () => {
-    expect(weekBounds("2026-06-28")).toEqual({ weekStart: "2026-06-22", weekEnd: "2026-06-28" });
+    expect(weekBounds("2026-06-28")).toEqual({
+      weekStart: "2026-06-22",
+      weekEnd: "2026-06-28",
+    });
   });
 
   it("maps a Monday to itself as the week start", () => {
-    expect(weekBounds("2026-06-22")).toEqual({ weekStart: "2026-06-22", weekEnd: "2026-06-28" });
+    expect(weekBounds("2026-06-22")).toEqual({
+      weekStart: "2026-06-22",
+      weekEnd: "2026-06-28",
+    });
   });
 });
 
@@ -346,7 +417,7 @@ describe("getEscalationOptions — charge nurse", () => {
     });
 
     const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
-    const eligible = result.filter(c => c.isEligible);
+    const eligible = result.filter((c) => c.isEligible);
     expect(eligible.length).toBeGreaterThan(0);
 
     const reasonsText = eligible[0].reasons.join(" ").toLowerCase();
@@ -360,10 +431,12 @@ describe("getEscalationOptions — charge nurse", () => {
     });
 
     const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
-    const candidate = result.find(c => c.staffId === CANDIDATE_ID);
+    const candidate = result.find((c) => c.staffId === CANDIDATE_ID);
     expect(candidate).toBeDefined();
     expect(candidate!.isEligible).toBe(false);
-    expect(candidate!.ineligibilityReasons.some(r => /charge/i.test(r))).toBe(true);
+    expect(candidate!.ineligibilityReasons.some((r) => /charge/i.test(r))).toBe(
+      true,
+    );
   });
 
   it("does not mark ineligible when original was NOT charge nurse", () => {
@@ -373,7 +446,7 @@ describe("getEscalationOptions — charge nurse", () => {
     });
 
     const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
-    const candidate = result.find(c => c.staffId === CANDIDATE_ID);
+    const candidate = result.find((c) => c.staffId === CANDIDATE_ID);
     expect(candidate!.isEligible).toBe(true);
   });
 });
@@ -392,30 +465,44 @@ describe("getEscalationOptions — overtime-last ordering rule", () => {
    *   activeLeaves, then per candidate: weekendRows
    */
   function setupMulti(
-    candidates: Array<Record<string, unknown> & { id: string; hours: number }>
+    candidates: Array<Record<string, unknown> & { id: string; hours: number }>,
   ) {
     mockGet
-      .mockReturnValueOnce(makeShiftRow())                 // shiftRow
+      .mockReturnValueOnce(makeShiftRow()) // shiftRow
       .mockReturnValueOnce({ role: "RN", icuCompetencyLevel: 3 }) // calledOut
-      .mockReturnValueOnce({ isChargeNurse: false });     // calledOutAssignment
+      .mockReturnValueOnce({ isChargeNurse: false }); // calledOutAssignment
 
     // Per candidate: schedule bounds, then one undefined to break the
     // consecutive-day walk.
     for (let i = 0; i < candidates.length; i++) {
-      mockGet.mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" });
+      mockGet.mockReturnValueOnce({
+        startDate: "2026-02-01",
+        endDate: "2026-03-31",
+      });
       mockGet.mockReturnValueOnce(undefined);
     }
 
     const weeklyRaw = candidates
       .filter((c) => c.hours > 0)
-      .map((c) => ({ staffId: c.id, status: "active", durationHours: c.hours }));
+      .map((c) => ({
+        staffId: c.id,
+        status: "active",
+        durationHours: c.hours,
+      }));
+
+    // PRN gap fix (2026-08-15): per-diem candidates are only eligible on
+    // dates they offered, so prime availability for the fixture's shift date.
+    const prnRows = candidates
+      .filter((c) => c.employmentType === "per_diem")
+      .map((c) => ({ staffId: c.id, availableDates: ["2026-03-10"] }));
 
     mockAll
       .mockReturnValueOnce(candidates.map((c) => makeCandidate(c))) // allStaff
-      .mockReturnValueOnce([])         // existingAssignments
-      .mockReturnValueOnce([])         // nearbyRaw
-      .mockReturnValueOnce(weeklyRaw)  // weeklyRaw
-      .mockReturnValueOnce([]);        // activeLeaves
+      .mockReturnValueOnce([]) // existingAssignments
+      .mockReturnValueOnce([]) // nearbyRaw
+      .mockReturnValueOnce(weeklyRaw) // weeklyRaw
+      .mockReturnValueOnce([]) // activeLeaves
+      .mockReturnValueOnce(prnRows); // prnAvailability rows
 
     for (let i = 0; i < candidates.length; i++) {
       mockAll.mockReturnValueOnce([]); // weekendRows per candidate
@@ -427,10 +514,20 @@ describe("getEscalationOptions — overtime-last ordering rule", () => {
     // The per-diem at 24h stays straight-time and must therefore rank first.
     // OT float is listed FIRST in allStaff to prove the sort reorders it below.
     setupMulti([
-      { id: "float-ot", firstName: "Fay", lastName: "Float",
-        employmentType: "float", hours: 36 },        // 36 + 12 = 48 → OT
-      { id: "prn-straight", firstName: "Pat", lastName: "Perdiem",
-        employmentType: "per_diem", hours: 24 },      // 24 + 12 = 36 → not OT
+      {
+        id: "float-ot",
+        firstName: "Fay",
+        lastName: "Float",
+        employmentType: "float",
+        hours: 36,
+      }, // 36 + 12 = 48 → OT
+      {
+        id: "prn-straight",
+        firstName: "Pat",
+        lastName: "Perdiem",
+        employmentType: "per_diem",
+        hours: 24,
+      }, // 24 + 12 = 36 → not OT
     ]);
 
     const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
@@ -448,10 +545,20 @@ describe("getEscalationOptions — overtime-last ordering rule", () => {
     // Both candidates cross 40h → both OT. Within the OT bucket the existing
     // score ordering applies, so the float (higher tier bonus) leads.
     setupMulti([
-      { id: "prn-ot", firstName: "Pat", lastName: "Perdiem",
-        employmentType: "per_diem", hours: 36 },      // OT
-      { id: "float-ot", firstName: "Fay", lastName: "Float",
-        employmentType: "float", hours: 36 },         // OT, higher tier score
+      {
+        id: "prn-ot",
+        firstName: "Pat",
+        lastName: "Perdiem",
+        employmentType: "per_diem",
+        hours: 36,
+      }, // OT
+      {
+        id: "float-ot",
+        firstName: "Fay",
+        lastName: "Float",
+        employmentType: "float",
+        hours: 36,
+      }, // OT, higher tier score
     ]);
 
     const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
@@ -468,10 +575,20 @@ describe("getEscalationOptions — overtime-last ordering rule", () => {
     // Neither crosses 40h → both straight-time. Float's tier bonus (30) beats
     // the overtime-tier full-timer's (10), so the float leads.
     setupMulti([
-      { id: "ft-straight", firstName: "Ted", lastName: "Fulltime",
-        employmentType: "full_time", hours: 12 },     // 12 + 12 = 24 → not OT
-      { id: "float-straight", firstName: "Fay", lastName: "Float",
-        employmentType: "float", hours: 12 },         // 12 + 12 = 24 → not OT
+      {
+        id: "ft-straight",
+        firstName: "Ted",
+        lastName: "Fulltime",
+        employmentType: "full_time",
+        hours: 12,
+      }, // 12 + 12 = 24 → not OT
+      {
+        id: "float-straight",
+        firstName: "Fay",
+        lastName: "Float",
+        employmentType: "float",
+        hours: 12,
+      }, // 12 + 12 = 24 → not OT
     ]);
 
     const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);
@@ -488,10 +605,20 @@ describe("getEscalationOptions — overtime-last ordering rule", () => {
     // One eligible OT candidate + one eligible non-OT candidate: non-OT leads,
     // and both remain ahead of any ineligible candidate (partition preserved).
     setupMulti([
-      { id: "float-ot", firstName: "Fay", lastName: "Float",
-        employmentType: "float", hours: 36 },         // OT, eligible
-      { id: "prn-straight", firstName: "Pat", lastName: "Perdiem",
-        employmentType: "per_diem", hours: 24 },      // non-OT, eligible
+      {
+        id: "float-ot",
+        firstName: "Fay",
+        lastName: "Float",
+        employmentType: "float",
+        hours: 36,
+      }, // OT, eligible
+      {
+        id: "prn-straight",
+        firstName: "Pat",
+        lastName: "Perdiem",
+        employmentType: "per_diem",
+        hours: 24,
+      }, // non-OT, eligible
     ]);
 
     const result = getEscalationOptions(SHIFT_ID, CALLED_OUT_ID);

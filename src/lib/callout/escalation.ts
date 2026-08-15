@@ -1,5 +1,12 @@
 import { db } from "@/db";
-import { staff, staffLeave, assignment, shift, shiftDefinition } from "@/db/schema";
+import {
+  staff,
+  staffLeave,
+  assignment,
+  shift,
+  shiftDefinition,
+  prnAvailability,
+} from "@/db/schema";
 import { eq, and, ne, gte, lte } from "drizzle-orm";
 import { weekBounds } from "@/lib/date/week";
 import {
@@ -7,6 +14,11 @@ import {
   countWeekendsInSchedulePeriod,
   countConsecutiveDaysBefore,
 } from "@/lib/coverage/staff-history";
+import {
+  SOURCE_BONUS,
+  bestPickAdjustment,
+  countRecentPickups,
+} from "@/lib/coverage/scoring";
 
 // Re-export so callers that import weekBounds from this module keep working.
 export { weekBounds };
@@ -29,10 +41,10 @@ export interface ReplacementCandidate {
   wouldBeOvertime: boolean;
   isEligible: boolean;
   ineligibilityReasons: string[];
-  reasons: string[];          // why this person is a good recommendation
-  score: number;              // numeric rank (higher = better)
-  hoursThisWeek: number;      // hours already scheduled in the shift's calendar week
-  restHoursBefore?: number;   // hours of rest between candidate's last preceding shift and this one
+  reasons: string[]; // why this person is a good recommendation
+  score: number; // numeric rank (higher = better)
+  hoursThisWeek: number; // hours already scheduled in the shift's calendar week
+  restHoursBefore?: number; // hours of rest between candidate's last preceding shift and this one
   weekendsThisPeriod: number; // weekend shifts already assigned in the current schedule period
   consecutiveDaysBeforeShift: number; // consecutive working days ending the day before the shift
 }
@@ -48,10 +60,9 @@ function offsetDate(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-
 export function getEscalationOptions(
   shiftId: string,
-  calledOutStaffId: string
+  calledOutStaffId: string,
 ): ReplacementCandidate[] {
   // ── 1. Shift + definition ────────────────────────────────────────────────
   const shiftRow = db
@@ -87,7 +98,10 @@ export function getEscalationOptions(
     .select({ isChargeNurse: assignment.isChargeNurse })
     .from(assignment)
     .where(
-      and(eq(assignment.shiftId, shiftId), eq(assignment.staffId, calledOutStaffId))
+      and(
+        eq(assignment.shiftId, shiftId),
+        eq(assignment.staffId, calledOutStaffId),
+      ),
     )
     .get();
   const chargeNurseRequired = calledOutAssignment?.isChargeNurse === true;
@@ -163,11 +177,24 @@ export function getEscalationOptions(
       and(
         eq(staffLeave.status, "approved"),
         lte(staffLeave.startDate, shiftDate),
-        gte(staffLeave.endDate, shiftDate)
-      )
+        gte(staffLeave.endDate, shiftDate),
+      ),
     )
     .all();
   const onLeave = new Set(activeLeaves.map((l) => l.staffId));
+
+  // ── 8b. PRN availability — per-diem nurses only work dates they OFFERED ──
+  // Gap fix (2026-08-15): generation and the open-shift recommendations both
+  // treat submitted PRN availability as a hard constraint, but this list
+  // ranked per-diem nurses for any date. Union all records per staff (same
+  // JSON-edge-case guard as the rule engine / find-candidates).
+  const prnRows = db.select().from(prnAvailability).all();
+  const prnAvailableByStaff = new Map<string, Set<string>>();
+  for (const r of prnRows) {
+    const set = prnAvailableByStaff.get(r.staffId) ?? new Set<string>();
+    for (const d of (r.availableDates as string[]) ?? []) set.add(d);
+    prnAvailableByStaff.set(r.staffId, set);
+  }
 
   // ── 9. Shift timing (minutes from shiftDate midnight) ────────────────────
   const shiftStartMins = timeToMins(shiftRow.startTime);
@@ -196,13 +223,23 @@ export function getEscalationOptions(
     // Charge nurse requirement
     if (chargeNurseRequired && !s.isChargeNurseQualified) {
       ineligibilityReasons.push(
-        "Not charge nurse qualified — called-out nurse held charge role"
+        "Not charge nurse qualified — called-out nurse held charge role",
       );
     }
 
     // Approved leave
     if (onLeave.has(s.id)) {
       ineligibilityReasons.push("On approved leave");
+    }
+
+    // PRN availability — a per-diem nurse who did not offer this date is
+    // ineligible (kept visible with the reason, per this list's
+    // show-don't-hide design, rather than silently dropped).
+    const offeredThisDate =
+      s.employmentType !== "per_diem" ||
+      (prnAvailableByStaff.get(s.id)?.has(shiftDate) ?? false);
+    if (!offeredThisDate) {
+      ineligibilityReasons.push("PRN — did not offer this date as available");
     }
 
     // Same-date availability
@@ -216,12 +253,13 @@ export function getEscalationOptions(
         if (a.date === prevDate) {
           // Compute the gap from this D-1 assignment's end to the new shift start
           const aEndMins = timeToMins(a.endTime);
-          const gap = a.endTime <= a.startTime
-            ? shiftStartMins - aEndMins              // overnight D-1 shift ends on D
-            : 24 * 60 - aEndMins + shiftStartMins;  // day shift ends on D-1
+          const gap =
+            a.endTime <= a.startTime
+              ? shiftStartMins - aEndMins // overnight D-1 shift ends on D
+              : 24 * 60 - aEndMins + shiftStartMins; // day shift ends on D-1
           if (gap < 10 * 60) {
             ineligibilityReasons.push(
-              `Only ${Math.round(gap / 60)}h rest before this shift`
+              `Only ${Math.round(gap / 60)}h rest before this shift`,
             );
           }
           // Track minimum rest for display on eligible candidates
@@ -235,7 +273,7 @@ export function getEscalationOptions(
           const restMins = nextStartFromD - shiftEndMins;
           if (restMins < 10 * 60) {
             ineligibilityReasons.push(
-              `Only ${Math.round(restMins / 60)}h rest after this shift`
+              `Only ${Math.round(restMins / 60)}h rest after this shift`,
             );
           }
         }
@@ -251,10 +289,18 @@ export function getEscalationOptions(
     // ── Source classification ─────────────────────────────────────────────
     let source: ReplacementCandidate["source"];
     switch (s.employmentType) {
-      case "float":    source = "float";    break;
-      case "per_diem": source = "per_diem"; break;
-      case "agency":   source = "agency";   break;
-      default:         source = "overtime"; break;
+      case "float":
+        source = "float";
+        break;
+      case "per_diem":
+        source = "per_diem";
+        break;
+      case "agency":
+        source = "agency";
+        break;
+      default:
+        source = "overtime";
+        break;
     }
 
     // ── Recommendation reasons ────────────────────────────────────────────
@@ -263,7 +309,13 @@ export function getEscalationOptions(
         reasons.push("Float pool — first choice for coverage");
         break;
       case "per_diem":
-        reasons.push("PRN staff — available on this date");
+        // Only claim availability when it is actually on file — the reason
+        // string used to assert this without any check (part of the gap fix).
+        reasons.push(
+          offeredThisDate
+            ? "PRN staff — offered this date as available"
+            : "PRN staff",
+        );
         break;
       case "overtime":
         // Overtime/hours context is shown as a con in the UI — not a pro
@@ -275,11 +327,11 @@ export function getEscalationOptions(
 
     if (s.icuCompetencyLevel >= calledOutLevel) {
       reasons.push(
-        `Level ${s.icuCompetencyLevel}/5 — matches or exceeds called-out nurse`
+        `Level ${s.icuCompetencyLevel}/5 — matches or exceeds called-out nurse`,
       );
     } else {
       reasons.push(
-        `Level ${s.icuCompetencyLevel}/5 — below called-out nurse (Level ${calledOutLevel})`
+        `Level ${s.icuCompetencyLevel}/5 — below called-out nurse (Level ${calledOutLevel})`,
       );
     }
 
@@ -318,20 +370,35 @@ export function getEscalationOptions(
     const competencyScore = effectiveLevel * 10 + overflowLevel * 2;
 
     // Source preference (float still preferred when competency is equal,
-    // but no longer able to dominate when there is a large level mismatch)
-    const sourceBonusMap: Record<string, number> = {
-      float: 30,
-      per_diem: 20,
-      overtime: 10,
-      agency: 0,
-    };
-
-    let score = competencyScore + (sourceBonusMap[source] ?? 0);
+    // but no longer able to dominate when there is a large level mismatch).
+    // The bonus table is shared with find-candidates via scoring.ts.
+    let score = competencyScore + (SOURCE_BONUS[source] ?? 0);
     if (isAvailable) score += 50;
     score += s.reliabilityRating * 3;
     if (chargeNurseRequired && s.isChargeNurseQualified) score += 15;
     if (source === "overtime" && !wouldBeOvertime) score += 10;
     score += Math.max(0, 40 - hoursThisWeek) * 0.2; // prefer less-loaded staff
+
+    // Fatigue + fairness + OT-cost adjustment — shared with the open-shift
+    // ranker so both surfaces agree on what "better" means.
+    const weekendsThisPeriod = countWeekendsInSchedulePeriod(
+      s.id,
+      shiftRow.scheduleId,
+    );
+    const consecutiveDaysBeforeShift = countConsecutiveDaysBefore(
+      s.id,
+      shiftRow.date,
+    );
+    const adj = bestPickAdjustment({
+      restHoursBefore,
+      consecutiveDaysBeforeShift,
+      weekendsThisPeriod,
+      recentPickups: countRecentPickups(s.id),
+      hoursThisWeek,
+      durationHours: shiftRow.durationHours ?? 12,
+    });
+    score += adj.delta;
+    reasons.push(...adj.notes);
 
     candidates.push({
       staffId: s.id,
@@ -351,8 +418,8 @@ export function getEscalationOptions(
       score,
       hoursThisWeek,
       restHoursBefore,
-      weekendsThisPeriod: countWeekendsInSchedulePeriod(s.id, shiftRow.scheduleId),
-      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(s.id, shiftRow.date),
+      weekendsThisPeriod,
+      consecutiveDaysBeforeShift,
     });
   }
 
@@ -363,8 +430,12 @@ export function getEscalationOptions(
   // first) and the existing score is SECONDARY. The eligible-vs-ineligible
   // partition is preserved — the OT rule applies WITHIN the eligible group and
   // separately WITHIN the ineligible group.
-  const byOvertimeThenScore = (a: ReplacementCandidate, b: ReplacementCandidate) => {
-    if (a.wouldBeOvertime !== b.wouldBeOvertime) return a.wouldBeOvertime ? 1 : -1;
+  const byOvertimeThenScore = (
+    a: ReplacementCandidate,
+    b: ReplacementCandidate,
+  ) => {
+    if (a.wouldBeOvertime !== b.wouldBeOvertime)
+      return a.wouldBeOvertime ? 1 : -1;
     return b.score - a.score;
   };
 

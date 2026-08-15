@@ -23,41 +23,91 @@ const mockAll = vi.hoisted(() => vi.fn());
 // ─── Module mocks ──────────────────────────────────────────────────────────
 
 vi.mock("drizzle-orm", () => ({
-  eq:  vi.fn(),
+  eq: vi.fn(),
   and: vi.fn(),
-  ne:  vi.fn(),
+  ne: vi.fn(),
   gte: vi.fn(),
   lte: vi.fn(),
-  or:  vi.fn(),
+  or: vi.fn(),
+  isNotNull: vi.fn(),
 }));
 
+// Stub the DB-touching fairness query; the adjustment math has its own tests
+// (src/__tests__/coverage/scoring.test.ts). recentPickups=0 keeps these
+// field-shape tests exercising real scoring with a neutral fairness input.
+vi.mock("@/lib/coverage/scoring", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/coverage/scoring")>();
+  return { ...actual, countRecentPickups: () => 0 };
+});
+
 vi.mock("@/db/schema", () => ({
-  staff:           { id: "s$id", role: "s$role", icuCompetencyLevel: "s$level",
-                     isChargeNurseQualified: "s$charge", reliabilityRating: "s$rel",
-                     isActive: "s$active", employmentType: "s$empType",
-                     firstName: "s$first", lastName: "s$last",
-                     homeUnit: "s$homeUnit", crossTrainedUnits: "s$crossTrained",
-                     flexHoursYearToDate: "s$flexYTD" },
-  staffLeave:      { staffId: "sl$staffId", status: "sl$status",
-                     startDate: "sl$start", endDate: "sl$end" },
-  assignment:      { id: "a$id", staffId: "a$staffId", status: "a$status",
-                     shiftId: "a$shiftId", isChargeNurse: "a$charge" },
-  shift:           { id: "sh$id", date: "sh$date", scheduleId: "sh$scheduleId",
-                     shiftDefinitionId: "sh$shiftDefId" },
-  shiftDefinition: { id: "sd$id", startTime: "sd$startTime", endTime: "sd$endTime",
-                     durationHours: "sd$duration", shiftType: "sd$type",
-                     unit: "sd$unit" },
-  schedule:        { id: "sched$id", startDate: "sched$startDate", endDate: "sched$endDate" },
+  staff: {
+    id: "s$id",
+    role: "s$role",
+    icuCompetencyLevel: "s$level",
+    isChargeNurseQualified: "s$charge",
+    reliabilityRating: "s$rel",
+    isActive: "s$active",
+    employmentType: "s$empType",
+    firstName: "s$first",
+    lastName: "s$last",
+    homeUnit: "s$homeUnit",
+    crossTrainedUnits: "s$crossTrained",
+    flexHoursYearToDate: "s$flexYTD",
+  },
+  staffLeave: {
+    staffId: "sl$staffId",
+    status: "sl$status",
+    startDate: "sl$start",
+    endDate: "sl$end",
+  },
+  assignment: {
+    id: "a$id",
+    staffId: "a$staffId",
+    status: "a$status",
+    shiftId: "a$shiftId",
+    isChargeNurse: "a$charge",
+  },
+  shift: {
+    id: "sh$id",
+    date: "sh$date",
+    scheduleId: "sh$scheduleId",
+    shiftDefinitionId: "sh$shiftDefId",
+  },
+  shiftDefinition: {
+    id: "sd$id",
+    startTime: "sd$startTime",
+    endTime: "sd$endTime",
+    durationHours: "sd$duration",
+    shiftType: "sd$type",
+    unit: "sd$unit",
+  },
+  schedule: {
+    id: "sched$id",
+    startDate: "sched$startDate",
+    endDate: "sched$endDate",
+  },
   prnAvailability: { staffId: "prn$staffId", availableDates: "prn$dates" },
+  callout: {
+    id: "c$id",
+    replacementStaffId: "c$repl",
+    resolvedAt: "c$resolved",
+  },
+  openShift: {
+    id: "os$id",
+    filledByStaffId: "os$filledBy",
+    filledAt: "os$filledAt",
+  },
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const chain: any = {};
-chain.get       = mockGet;
-chain.all       = mockAll;
-chain.where     = () => chain;
+chain.get = mockGet;
+chain.all = mockAll;
+chain.where = () => chain;
 chain.innerJoin = () => chain;
-chain.from      = () => chain;
+chain.from = () => chain;
 
 vi.mock("@/db", () => ({ db: { select: () => chain } }));
 
@@ -68,38 +118,38 @@ import { findCandidatesForShift } from "@/lib/coverage/find-candidates";
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 const SHIFT_ID = "shift-001";
-const UNIT     = "ICU";
+const UNIT = "ICU";
 
 // ─── Factory helpers ───────────────────────────────────────────────────────
 
 function makeShiftRow(overrides: Record<string, unknown> = {}) {
   return {
-    id:            SHIFT_ID,
-    date:          "2026-03-10",
-    startTime:     "07:00",
-    endTime:       "19:00",
+    id: SHIFT_ID,
+    date: "2026-03-10",
+    startTime: "07:00",
+    endTime: "19:00",
     durationHours: 12,
-    unit:          UNIT,
-    shiftType:     "day",
-    scheduleId:    "sched-001",
+    unit: UNIT,
+    shiftType: "day",
+    scheduleId: "sched-001",
     ...overrides,
   };
 }
 
 function makeFloatStaff(overrides: Record<string, unknown> = {}) {
   return {
-    id:                    "float-staff-001",
-    firstName:             "Sam",
-    lastName:              "Rivera",
-    role:                  "RN",
-    employmentType:        "float",
-    icuCompetencyLevel:    3,
+    id: "float-staff-001",
+    firstName: "Sam",
+    lastName: "Rivera",
+    role: "RN",
+    employmentType: "float",
+    icuCompetencyLevel: 3,
     isChargeNurseQualified: false,
-    reliabilityRating:     4,
-    isActive:              true,
-    homeUnit:              UNIT,    // matches shift unit → isQualified = true
-    crossTrainedUnits:     null,
-    flexHoursYearToDate:   10,
+    reliabilityRating: 4,
+    isActive: true,
+    homeUnit: UNIT, // matches shift unit → isQualified = true
+    crossTrainedUnits: null,
+    flexHoursYearToDate: 10,
     ...overrides,
   };
 }
@@ -130,18 +180,17 @@ function makeFloatStaff(overrides: Record<string, unknown> = {}) {
  *   8. regularStaff             (findOvertimeCandidates)
  */
 function setupFloatCandidate({
-  floatStaff   = makeFloatStaff(),
-  weekendRows  = [] as Array<{ date: string }>,
+  floatStaff = makeFloatStaff(),
+  weekendRows = [] as Array<{ date: string }>,
   consecutiveDays = 0,
-  weeklyHours  = 0,
+  weeklyHours = 0,
 } = {}) {
-  const weeklyAssignments = weeklyHours > 0
-    ? [{ durationHours: weeklyHours }]
-    : [];
+  const weeklyAssignments =
+    weeklyHours > 0 ? [{ durationHours: weeklyHours }] : [];
 
   // .get() sequence
   mockGet
-    .mockReturnValueOnce(makeShiftRow())            // 1. shiftRow
+    .mockReturnValueOnce(makeShiftRow()) // 1. shiftRow
     .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }); // 2. sched
 
   for (let d = 0; d < consecutiveDays; d++) {
@@ -152,16 +201,16 @@ function setupFloatCandidate({
   // .all() sequence — shift date 2026-03-10 is a Tuesday (not weekend),
   // so the monthly on-call weekend query does NOT run.
   mockAll
-    .mockReturnValueOnce([floatStaff])      // 1. floatStaff
-    .mockReturnValueOnce([])               // 2. leaveRecords
-    .mockReturnValueOnce([])               // 3. existingAssignments (same-day)
-    .mockReturnValueOnce(weeklyAssignments)// 4. weekAssignments
-    .mockReturnValueOnce([])               // 5. onCallThisWeek (on-call limit check)
-    .mockReturnValueOnce([])               // 6. adjacentAssignments
-    .mockReturnValueOnce([])               // 7. calloutReplacementsThisWeek
-    .mockReturnValueOnce(weekendRows)      // 8. weekendRows (countWeekendsInSchedulePeriod)
-    .mockReturnValueOnce([])               // 9. prnStaff
-    .mockReturnValueOnce([]);              // 10. regularStaff
+    .mockReturnValueOnce([floatStaff]) // 1. floatStaff
+    .mockReturnValueOnce([]) // 2. leaveRecords
+    .mockReturnValueOnce([]) // 3. existingAssignments (same-day)
+    .mockReturnValueOnce(weeklyAssignments) // 4. weekAssignments
+    .mockReturnValueOnce([]) // 5. onCallThisWeek (on-call limit check)
+    .mockReturnValueOnce([]) // 6. adjacentAssignments
+    .mockReturnValueOnce([]) // 7. calloutReplacementsThisWeek
+    .mockReturnValueOnce(weekendRows) // 8. weekendRows (countWeekendsInSchedulePeriod)
+    .mockReturnValueOnce([]) // 9. prnStaff
+    .mockReturnValueOnce([]); // 10. regularStaff
 }
 
 /**
@@ -172,9 +221,9 @@ function setupNoStaff() {
   mockGet.mockReturnValueOnce(makeShiftRow()); // shiftRow
 
   mockAll
-    .mockReturnValueOnce([])   // floatStaff (empty)
-    .mockReturnValueOnce([])   // prnStaff (empty)
-    .mockReturnValueOnce([]);  // regularStaff (empty)
+    .mockReturnValueOnce([]) // floatStaff (empty)
+    .mockReturnValueOnce([]) // prnStaff (empty)
+    .mockReturnValueOnce([]); // regularStaff (empty)
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -186,14 +235,14 @@ describe("findCandidatesForShift — agency pseudo-candidate fields", () => {
     setupNoStaff();
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    expect(candidates.some(c => c.staffId === "agency")).toBe(true);
+    expect(candidates.some((c) => c.staffId === "agency")).toBe(true);
   });
 
   it("agency candidate has isChargeNurseQualified: false", async () => {
     setupNoStaff();
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const agency = candidates.find(c => c.staffId === "agency")!;
+    const agency = candidates.find((c) => c.staffId === "agency")!;
     expect(agency.isChargeNurseQualified).toBe(false);
   });
 
@@ -201,7 +250,7 @@ describe("findCandidatesForShift — agency pseudo-candidate fields", () => {
     setupNoStaff();
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const agency = candidates.find(c => c.staffId === "agency")!;
+    const agency = candidates.find((c) => c.staffId === "agency")!;
     expect(agency.weekendsThisPeriod).toBe(0);
   });
 
@@ -209,14 +258,15 @@ describe("findCandidatesForShift — agency pseudo-candidate fields", () => {
     setupNoStaff();
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const agency = candidates.find(c => c.staffId === "agency")!;
+    const agency = candidates.find((c) => c.staffId === "agency")!;
     expect(agency.consecutiveDaysBeforeShift).toBe(0);
   });
 
   it("returns empty candidates and empty steps when shift not found", async () => {
     mockGet.mockReturnValueOnce(undefined); // shiftRow not found
 
-    const { candidates, escalationStepsChecked } = await findCandidatesForShift(SHIFT_ID);
+    const { candidates, escalationStepsChecked } =
+      await findCandidatesForShift(SHIFT_ID);
     expect(candidates).toEqual([]);
     expect(escalationStepsChecked).toEqual([]);
   });
@@ -226,19 +276,23 @@ describe("findCandidatesForShift — float candidate fields", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("float candidate has isChargeNurseQualified matching the staff record (false)", async () => {
-    setupFloatCandidate({ floatStaff: makeFloatStaff({ isChargeNurseQualified: false }) });
+    setupFloatCandidate({
+      floatStaff: makeFloatStaff({ isChargeNurseQualified: false }),
+    });
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float");
+    const float = candidates.find((c) => c.source === "float");
     expect(float).toBeDefined();
     expect(float!.isChargeNurseQualified).toBe(false);
   });
 
   it("float candidate has isChargeNurseQualified matching the staff record (true)", async () => {
-    setupFloatCandidate({ floatStaff: makeFloatStaff({ isChargeNurseQualified: true }) });
+    setupFloatCandidate({
+      floatStaff: makeFloatStaff({ isChargeNurseQualified: true }),
+    });
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float");
+    const float = candidates.find((c) => c.source === "float");
     expect(float).toBeDefined();
     expect(float!.isChargeNurseQualified).toBe(true);
   });
@@ -247,7 +301,7 @@ describe("findCandidatesForShift — float candidate fields", () => {
     setupFloatCandidate({ weekendRows: [] });
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float")!;
+    const float = candidates.find((c) => c.source === "float")!;
     expect(typeof float.weekendsThisPeriod).toBe("number");
   });
 
@@ -260,7 +314,7 @@ describe("findCandidatesForShift — float candidate fields", () => {
     });
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float")!;
+    const float = candidates.find((c) => c.source === "float")!;
     expect(float.weekendsThisPeriod).toBe(2);
   });
 
@@ -268,7 +322,7 @@ describe("findCandidatesForShift — float candidate fields", () => {
     setupFloatCandidate({ consecutiveDays: 0 });
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float")!;
+    const float = candidates.find((c) => c.source === "float")!;
     expect(typeof float.consecutiveDaysBeforeShift).toBe("number");
   });
 
@@ -276,7 +330,7 @@ describe("findCandidatesForShift — float candidate fields", () => {
     setupFloatCandidate({ consecutiveDays: 3 });
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float")!;
+    const float = candidates.find((c) => c.source === "float")!;
     expect(float.consecutiveDaysBeforeShift).toBe(3);
   });
 
@@ -284,7 +338,7 @@ describe("findCandidatesForShift — float candidate fields", () => {
     setupFloatCandidate({ weeklyHours: 32 }); // 32 + 12 = 44 > 40
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float");
+    const float = candidates.find((c) => c.source === "float");
     expect(float).toBeDefined();
     expect(float!.isOvertime).toBe(true);
   });
@@ -293,7 +347,7 @@ describe("findCandidatesForShift — float candidate fields", () => {
     setupFloatCandidate({ weeklyHours: 20 }); // 20 + 12 = 32 ≤ 40
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const float = candidates.find(c => c.source === "float");
+    const float = candidates.find((c) => c.source === "float");
     expect(float).toBeDefined();
     expect(float!.isOvertime).toBe(false);
   });
@@ -304,18 +358,18 @@ describe("findCandidatesForShift — overtime-last ordering rule", () => {
 
   function makePrnStaff(overrides: Record<string, unknown> = {}) {
     return {
-      id:                    "prn-staff-001",
-      firstName:             "Pat",
-      lastName:              "Perdiem",
-      role:                  "RN",
-      employmentType:        "per_diem",
-      icuCompetencyLevel:    3,
+      id: "prn-staff-001",
+      firstName: "Pat",
+      lastName: "Perdiem",
+      role: "RN",
+      employmentType: "per_diem",
+      icuCompetencyLevel: 3,
       isChargeNurseQualified: false,
-      reliabilityRating:     4,
-      isActive:              true,
-      homeUnit:              UNIT,
-      crossTrainedUnits:     null,
-      flexHoursYearToDate:   10,
+      reliabilityRating: 4,
+      isActive: true,
+      homeUnit: UNIT,
+      crossTrainedUnits: null,
+      flexHoursYearToDate: 10,
       ...overrides,
     };
   }
@@ -339,37 +393,37 @@ describe("findCandidatesForShift — overtime-last ordering rule", () => {
    */
   function setupFloatAndPrn(floatHours: number, prnHours: number) {
     mockGet
-      .mockReturnValueOnce(makeShiftRow())                                   // shiftRow
+      .mockReturnValueOnce(makeShiftRow()) // shiftRow
       .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (float)
-      .mockReturnValueOnce(undefined)                                        // consec break (float)
+      .mockReturnValueOnce(undefined) // consec break (float)
       .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (prn)
-      .mockReturnValueOnce(undefined);                                       // consec break (prn)
+      .mockReturnValueOnce(undefined); // consec break (prn)
 
     const floatWeek = floatHours > 0 ? [{ durationHours: floatHours }] : [];
-    const prnWeek   = prnHours   > 0 ? [{ durationHours: prnHours   }] : [];
+    const prnWeek = prnHours > 0 ? [{ durationHours: prnHours }] : [];
 
     mockAll
       // float tier
       .mockReturnValueOnce([makeFloatStaff()]) // floatStaff
-      .mockReturnValueOnce([])                 // leaveRecords
-      .mockReturnValueOnce([])                 // existingAssignments
-      .mockReturnValueOnce(floatWeek)          // weekAssignments
-      .mockReturnValueOnce([])                 // onCallThisWeek
-      .mockReturnValueOnce([])                 // adjacentAssignments
-      .mockReturnValueOnce([])                 // calloutReplacements
-      .mockReturnValueOnce([])                 // weekendRows
+      .mockReturnValueOnce([]) // leaveRecords
+      .mockReturnValueOnce([]) // existingAssignments
+      .mockReturnValueOnce(floatWeek) // weekAssignments
+      .mockReturnValueOnce([]) // onCallThisWeek
+      .mockReturnValueOnce([]) // adjacentAssignments
+      .mockReturnValueOnce([]) // calloutReplacements
+      .mockReturnValueOnce([]) // weekendRows
       // prn tier
-      .mockReturnValueOnce([makePrnStaff()])   // prnStaff
+      .mockReturnValueOnce([makePrnStaff()]) // prnStaff
       .mockReturnValueOnce([{ availableDates: ["2026-03-10"] }]) // prnAvailability
-      .mockReturnValueOnce([])                 // leaveRecords
-      .mockReturnValueOnce([])                 // existingAssignments
-      .mockReturnValueOnce(prnWeek)            // weekAssignments
-      .mockReturnValueOnce([])                 // onCallThisWeek
-      .mockReturnValueOnce([])                 // adjacentAssignments
-      .mockReturnValueOnce([])                 // calloutReplacements
-      .mockReturnValueOnce([])                 // weekendRows
+      .mockReturnValueOnce([]) // leaveRecords
+      .mockReturnValueOnce([]) // existingAssignments
+      .mockReturnValueOnce(prnWeek) // weekAssignments
+      .mockReturnValueOnce([]) // onCallThisWeek
+      .mockReturnValueOnce([]) // adjacentAssignments
+      .mockReturnValueOnce([]) // calloutReplacements
+      .mockReturnValueOnce([]) // weekendRows
       // overtime tier
-      .mockReturnValueOnce([]);                // regularStaff (empty)
+      .mockReturnValueOnce([]); // regularStaff (empty)
   }
 
   it("ranks an eligible non-OT per-diem above a higher-scored OT float", async () => {
@@ -407,52 +461,54 @@ describe("findCandidatesForShift — overtime-last ordering rule", () => {
    *                weekendRows
    */
   function setupFloatAndOvertime(floatHours: number, otHours: number) {
-    const regularStaff = [{
-      id:                    "ot-staff-001",
-      firstName:             "Drew",
-      lastName:              "Lee",
-      role:                  "RN",
-      employmentType:        "full_time",
-      icuCompetencyLevel:    3,
-      isChargeNurseQualified: false,
-      reliabilityRating:     4,
-      isActive:              true,
-      homeUnit:              UNIT,
-      crossTrainedUnits:     null,
-      flexHoursYearToDate:   10,
-    }];
+    const regularStaff = [
+      {
+        id: "ot-staff-001",
+        firstName: "Drew",
+        lastName: "Lee",
+        role: "RN",
+        employmentType: "full_time",
+        icuCompetencyLevel: 3,
+        isChargeNurseQualified: false,
+        reliabilityRating: 4,
+        isActive: true,
+        homeUnit: UNIT,
+        crossTrainedUnits: null,
+        flexHoursYearToDate: 10,
+      },
+    ];
 
     mockGet
-      .mockReturnValueOnce(makeShiftRow())                                   // shiftRow
+      .mockReturnValueOnce(makeShiftRow()) // shiftRow
       .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (float)
-      .mockReturnValueOnce(undefined)                                        // consec break (float)
+      .mockReturnValueOnce(undefined) // consec break (float)
       .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }) // sched (ot)
-      .mockReturnValueOnce(undefined);                                       // consec break (ot)
+      .mockReturnValueOnce(undefined); // consec break (ot)
 
     const floatWeek = floatHours > 0 ? [{ durationHours: floatHours }] : [];
-    const otWeek    = otHours    > 0 ? [{ durationHours: otHours    }] : [];
+    const otWeek = otHours > 0 ? [{ durationHours: otHours }] : [];
 
     mockAll
       // float tier
       .mockReturnValueOnce([makeFloatStaff()]) // floatStaff
-      .mockReturnValueOnce([])                 // leaveRecords
-      .mockReturnValueOnce([])                 // existingAssignments
-      .mockReturnValueOnce(floatWeek)          // weekAssignments
-      .mockReturnValueOnce([])                 // onCallThisWeek
-      .mockReturnValueOnce([])                 // adjacentAssignments
-      .mockReturnValueOnce([])                 // calloutReplacements
-      .mockReturnValueOnce([])                 // weekendRows
+      .mockReturnValueOnce([]) // leaveRecords
+      .mockReturnValueOnce([]) // existingAssignments
+      .mockReturnValueOnce(floatWeek) // weekAssignments
+      .mockReturnValueOnce([]) // onCallThisWeek
+      .mockReturnValueOnce([]) // adjacentAssignments
+      .mockReturnValueOnce([]) // calloutReplacements
+      .mockReturnValueOnce([]) // weekendRows
       // prn tier (empty)
-      .mockReturnValueOnce([])                 // prnStaff
+      .mockReturnValueOnce([]) // prnStaff
       // overtime tier
-      .mockReturnValueOnce(regularStaff)       // regularStaff
-      .mockReturnValueOnce([])                 // leaveRecords
-      .mockReturnValueOnce([])                 // existingAssignments
-      .mockReturnValueOnce(otWeek)             // weekAssignments
-      .mockReturnValueOnce([])                 // onCallThisWeek
-      .mockReturnValueOnce([])                 // adjacentAssignments
-      .mockReturnValueOnce([])                 // calloutReplacements
-      .mockReturnValueOnce([]);                // weekendRows
+      .mockReturnValueOnce(regularStaff) // regularStaff
+      .mockReturnValueOnce([]) // leaveRecords
+      .mockReturnValueOnce([]) // existingAssignments
+      .mockReturnValueOnce(otWeek) // weekAssignments
+      .mockReturnValueOnce([]) // onCallThisWeek
+      .mockReturnValueOnce([]) // adjacentAssignments
+      .mockReturnValueOnce([]) // calloutReplacements
+      .mockReturnValueOnce([]); // weekendRows
   }
 
   it("orders an all-OT list by score (float tier bonus still wins)", async () => {
@@ -508,30 +564,31 @@ describe("findCandidatesForShift — overtime tier: OT reasons removed", () => {
    */
   function setupOvertimeCandidate({
     hoursThisWeek = 32,
-    weekendRows   = [] as Array<{ date: string }>,
+    weekendRows = [] as Array<{ date: string }>,
     consecutiveDays = 0,
   } = {}) {
-    const regularStaff = [{
-      id:                    "ot-staff-001",
-      firstName:             "Drew",
-      lastName:              "Lee",
-      role:                  "RN",
-      employmentType:        "full_time",
-      icuCompetencyLevel:    3,
-      isChargeNurseQualified: false,
-      reliabilityRating:     3,
-      isActive:              true,
-      homeUnit:              UNIT,
-      crossTrainedUnits:     null,
-      flexHoursYearToDate:   10,
-    }];
+    const regularStaff = [
+      {
+        id: "ot-staff-001",
+        firstName: "Drew",
+        lastName: "Lee",
+        role: "RN",
+        employmentType: "full_time",
+        icuCompetencyLevel: 3,
+        isChargeNurseQualified: false,
+        reliabilityRating: 3,
+        isActive: true,
+        homeUnit: UNIT,
+        crossTrainedUnits: null,
+        flexHoursYearToDate: 10,
+      },
+    ];
 
-    const weeklyAssignments = hoursThisWeek > 0
-      ? [{ durationHours: hoursThisWeek }]
-      : [];
+    const weeklyAssignments =
+      hoursThisWeek > 0 ? [{ durationHours: hoursThisWeek }] : [];
 
     mockGet
-      .mockReturnValueOnce(makeShiftRow())                                  // shiftRow
+      .mockReturnValueOnce(makeShiftRow()) // shiftRow
       .mockReturnValueOnce({ startDate: "2026-02-01", endDate: "2026-03-31" }); // sched
 
     for (let d = 0; d < consecutiveDays; d++) {
@@ -540,23 +597,23 @@ describe("findCandidatesForShift — overtime tier: OT reasons removed", () => {
     mockGet.mockReturnValueOnce(undefined); // break consecutive loop
 
     mockAll
-      .mockReturnValueOnce([])              // floatStaff (empty)
-      .mockReturnValueOnce([])              // prnStaff (empty)
-      .mockReturnValueOnce(regularStaff)   // regularStaff
-      .mockReturnValueOnce([])             // leaveRecords
-      .mockReturnValueOnce([])             // existingAssignments
+      .mockReturnValueOnce([]) // floatStaff (empty)
+      .mockReturnValueOnce([]) // prnStaff (empty)
+      .mockReturnValueOnce(regularStaff) // regularStaff
+      .mockReturnValueOnce([]) // leaveRecords
+      .mockReturnValueOnce([]) // existingAssignments
       .mockReturnValueOnce(weeklyAssignments) // weekAssignments
-      .mockReturnValueOnce([])             // onCallThisWeek (on-call limit check)
-      .mockReturnValueOnce([])             // adjacentAssignments
-      .mockReturnValueOnce([])             // calloutReplacementsThisWeek
-      .mockReturnValueOnce(weekendRows);   // weekendRows
+      .mockReturnValueOnce([]) // onCallThisWeek (on-call limit check)
+      .mockReturnValueOnce([]) // adjacentAssignments
+      .mockReturnValueOnce([]) // calloutReplacementsThisWeek
+      .mockReturnValueOnce(weekendRows); // weekendRows
   }
 
   it("overtime tier reasons do not contain 'overtime' text", async () => {
     setupOvertimeCandidate({ hoursThisWeek: 32 });
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const ot = candidates.find(c => c.source === "overtime");
+    const ot = candidates.find((c) => c.source === "overtime");
     if (!ot) return; // no OT candidate surfaced — test is N/A
 
     const reasonsText = ot.reasons.join(" ").toLowerCase();
@@ -569,7 +626,7 @@ describe("findCandidatesForShift — overtime tier: OT reasons removed", () => {
     setupOvertimeCandidate({ hoursThisWeek: 32 }); // 32 + 12 = 44 > 40
 
     const { candidates } = await findCandidatesForShift(SHIFT_ID);
-    const ot = candidates.find(c => c.source === "overtime");
+    const ot = candidates.find((c) => c.source === "overtime");
     if (!ot) return;
     expect(ot.isOvertime).toBe(true);
   });

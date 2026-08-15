@@ -11,6 +11,11 @@ import { eq, and, ne, gte, lte, or } from "drizzle-orm";
 import { addDays, parseISO, format } from "date-fns";
 import { weekBounds } from "@/lib/date/week";
 import {
+  SOURCE_BONUS,
+  bestPickAdjustment,
+  countRecentPickups,
+} from "@/lib/coverage/scoring";
+import {
   ROLE_RANK,
   countWeekendsInSchedulePeriod,
   countConsecutiveDaysBefore,
@@ -20,12 +25,8 @@ import {
 // level mismatch can override tier preference. A non-OT regular nurse at the
 // same competency level as a PRN nurse scores identically (overtime source
 // bonus 10 + non-OT bonus 10 = 20, same as PRN source bonus 20).
-const SOURCE_BONUS: Record<string, number> = {
-  float: 30,
-  per_diem: 20,
-  overtime: 10,
-  agency: 0,
-};
+// The bonus table itself lives in scoring.ts — the single definition both
+// rankers share (see that module for the consolidation rationale).
 
 export interface CandidateRecommendation {
   staffId: string;
@@ -319,6 +320,22 @@ async function findFloatCandidates(
     if (availability.calloutWarning) reasons.push(availability.calloutWarning);
 
     const hoursThisWeek = availability.hoursThisWeek;
+    const weekendsThisPeriod = countWeekendsInSchedulePeriod(
+      s.id,
+      shiftDetails.scheduleId,
+    );
+    const consecutiveDaysBeforeShift = countConsecutiveDaysBefore(
+      s.id,
+      shiftDetails.date,
+    );
+    const adj = bestPickAdjustment({
+      restHoursBefore: availability.restHoursBefore,
+      consecutiveDaysBeforeShift,
+      weekendsThisPeriod,
+      recentPickups: countRecentPickups(s.id),
+      hoursThisWeek,
+      durationHours: shiftDetails.durationHours,
+    });
     candidates.push({
       staffId: s.id,
       staffName: `${s.firstName} ${s.lastName}`,
@@ -326,28 +343,23 @@ async function findFloatCandidates(
       icuCompetencyLevel: s.icuCompetencyLevel,
       isChargeNurseQualified: s.isChargeNurseQualified,
       source: "float",
-      reasons,
-      score: candidateScore(
-        s.icuCompetencyLevel,
-        s.isChargeNurseQualified,
-        isHomeUnit,
-        s.reliabilityRating,
-        "float",
-        hoursThisWeek,
-        shiftDetails.durationHours,
-        vacancyContext,
-      ),
+      reasons: [...reasons, ...adj.notes],
+      score:
+        candidateScore(
+          s.icuCompetencyLevel,
+          s.isChargeNurseQualified,
+          isHomeUnit,
+          s.reliabilityRating,
+          "float",
+          hoursThisWeek,
+          shiftDetails.durationHours,
+          vacancyContext,
+        ) + adj.delta,
       isOvertime: hoursThisWeek + shiftDetails.durationHours > 40,
       hoursThisWeek,
       restHoursBefore: availability.restHoursBefore,
-      weekendsThisPeriod: countWeekendsInSchedulePeriod(
-        s.id,
-        shiftDetails.scheduleId,
-      ),
-      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(
-        s.id,
-        shiftDetails.date,
-      ),
+      weekendsThisPeriod,
+      consecutiveDaysBeforeShift,
     });
   }
 
@@ -415,6 +427,22 @@ async function findPRNCandidates(
     if (availability.calloutWarning) reasons.push(availability.calloutWarning);
 
     const hoursThisWeek = availability.hoursThisWeek;
+    const weekendsThisPeriod = countWeekendsInSchedulePeriod(
+      s.id,
+      shiftDetails.scheduleId,
+    );
+    const consecutiveDaysBeforeShift = countConsecutiveDaysBefore(
+      s.id,
+      shiftDetails.date,
+    );
+    const adj = bestPickAdjustment({
+      restHoursBefore: availability.restHoursBefore,
+      consecutiveDaysBeforeShift,
+      weekendsThisPeriod,
+      recentPickups: countRecentPickups(s.id),
+      hoursThisWeek,
+      durationHours: shiftDetails.durationHours,
+    });
     candidates.push({
       staffId: s.id,
       staffName: `${s.firstName} ${s.lastName}`,
@@ -422,28 +450,23 @@ async function findPRNCandidates(
       icuCompetencyLevel: s.icuCompetencyLevel,
       isChargeNurseQualified: s.isChargeNurseQualified,
       source: "per_diem",
-      reasons,
-      score: candidateScore(
-        s.icuCompetencyLevel,
-        s.isChargeNurseQualified,
-        isHomeUnit,
-        s.reliabilityRating,
-        "per_diem",
-        hoursThisWeek,
-        shiftDetails.durationHours,
-        vacancyContext,
-      ),
+      reasons: [...reasons, ...adj.notes],
+      score:
+        candidateScore(
+          s.icuCompetencyLevel,
+          s.isChargeNurseQualified,
+          isHomeUnit,
+          s.reliabilityRating,
+          "per_diem",
+          hoursThisWeek,
+          shiftDetails.durationHours,
+          vacancyContext,
+        ) + adj.delta,
       isOvertime: false,
       hoursThisWeek,
       restHoursBefore: availability.restHoursBefore,
-      weekendsThisPeriod: countWeekendsInSchedulePeriod(
-        s.id,
-        shiftDetails.scheduleId,
-      ),
-      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(
-        s.id,
-        shiftDetails.date,
-      ),
+      weekendsThisPeriod,
+      consecutiveDaysBeforeShift,
     });
   }
 
@@ -501,6 +524,22 @@ async function findOvertimeCandidates(
       reasons.push("Charge nurse qualified");
     if (availability.calloutWarning) reasons.push(availability.calloutWarning);
 
+    const weekendsThisPeriod = countWeekendsInSchedulePeriod(
+      s.id,
+      shiftDetails.scheduleId,
+    );
+    const consecutiveDaysBeforeShift = countConsecutiveDaysBefore(
+      s.id,
+      shiftDetails.date,
+    );
+    const adj = bestPickAdjustment({
+      restHoursBefore: availability.restHoursBefore,
+      consecutiveDaysBeforeShift,
+      weekendsThisPeriod,
+      recentPickups: countRecentPickups(s.id),
+      hoursThisWeek,
+      durationHours: shiftDetails.durationHours,
+    });
     candidates.push({
       staffId: s.id,
       staffName: `${s.firstName} ${s.lastName}`,
@@ -508,29 +547,24 @@ async function findOvertimeCandidates(
       icuCompetencyLevel: s.icuCompetencyLevel,
       isChargeNurseQualified: s.isChargeNurseQualified,
       source: "overtime",
-      reasons,
-      score: candidateScore(
-        s.icuCompetencyLevel,
-        s.isChargeNurseQualified,
-        isHomeUnit,
-        s.reliabilityRating,
-        "overtime",
-        hoursThisWeek,
-        shiftDetails.durationHours,
-        vacancyContext,
-      ),
+      reasons: [...reasons, ...adj.notes],
+      score:
+        candidateScore(
+          s.icuCompetencyLevel,
+          s.isChargeNurseQualified,
+          isHomeUnit,
+          s.reliabilityRating,
+          "overtime",
+          hoursThisWeek,
+          shiftDetails.durationHours,
+          vacancyContext,
+        ) + adj.delta,
       isOvertime: wouldBeOvertime,
       hoursThisWeek,
       fteHoursPerWeek: s.fte * 40,
       restHoursBefore: availability.restHoursBefore,
-      weekendsThisPeriod: countWeekendsInSchedulePeriod(
-        s.id,
-        shiftDetails.scheduleId,
-      ),
-      consecutiveDaysBeforeShift: countConsecutiveDaysBefore(
-        s.id,
-        shiftDetails.date,
-      ),
+      weekendsThisPeriod,
+      consecutiveDaysBeforeShift,
     });
   }
 

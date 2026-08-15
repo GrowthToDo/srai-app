@@ -6,7 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.9.1] - 2026-08-15
+## [1.10.0] - 2026-08-15
+
+### Changed
+
+- **Smarter "best pick" in callouts and open shifts** (founder direction).
+  New shared scoring module (`src/lib/coverage/scoring.ts`) both rankers use,
+  so they can never disagree about what "better" means:
+  - **PRN gap fixed:** the callout escalation list now respects submitted PRN
+    availability — a per-diem nurse who did not offer the date shows as
+    ineligible with the reason, matching generation and open-shift behavior
+    (previously it could rank them #1 and even claimed "available on this
+    date" without checking).
+  - **Fatigue ranks down (with visible reasons):** short turnaround (10-12h
+    rest) −8, consecutive days from day 4 (−5/day, cap −15), 3rd+ weekend
+    this period (−3, cap −6). Penalties are tie-breaker sized — they reorder
+    comparable nurses, never promote an under-qualified one.
+  - **Fairness rotation:** covering a callout or filling an open shift in the
+    last 14 days ranks a nurse down (−6 each, cap −12, reason shown:
+    "rotating the ask") — spreads extra shifts instead of burning out the
+    reliable one.
+  - **Cheapest overtime first:** within the OT tier (straight-time still
+    always sorts first), fewer projected OT hours ranks higher — 4h of OT
+    beats 12h. No hourly rates modeled (policy): cost = OT hours.
 
 ### Fixed
 
