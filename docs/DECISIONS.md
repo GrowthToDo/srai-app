@@ -60,3 +60,12 @@ decisions get appended in the same session they are made (CLAUDE.md rule).
   agent instead of grinding) and effort pinning (judgment high/xhigh
   sparingly). Gates never scale down with model quality — they are
   tier-insurance.
+
+## 2026-08-15 — Reliability rating stays static; feature itself under question
+
+The per-nurse reliability rating (imported from the roster Excel, weighted
+×3 in both candidate rankers) is NOT to be wired to real callout history for
+now. Founder: "leave it for now — we are not sure if we will keep this
+feature." Do not build earned-reliability, and do not re-flag the staleness;
+the open decision is whether the field survives at all. If it is removed,
+strip it from both rankers' base scores at the same time.
