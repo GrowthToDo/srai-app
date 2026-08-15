@@ -19,7 +19,9 @@ export type NotificationType =
   | "swap_requested"
   | "swap_response"
   | "swap_decided"
-  | "leave_decided";
+  | "leave_decided"
+  | "open_shift_posted"
+  | "open_shift_decided";
 
 /** The pure output of a composer — everything needed to insert one row. */
 export interface NotificationDraft {
@@ -68,7 +70,7 @@ interface InsertableDb {
 export function insertNotification(
   db: unknown,
   notificationTable: unknown,
-  draft: NotificationDraft
+  draft: NotificationDraft,
 ): void {
   const insertable = db as InsertableDb;
   insertable
@@ -187,5 +189,26 @@ export function composeLeaveDecided(params: {
     title: approved ? "Leave approved" : "Leave denied",
     body: `${params.startDate} – ${params.endDate}`,
     href: "/my/leave",
+  };
+}
+
+/**
+ * An open shift was posted that this nurse is rule-eligible to cover. Sent to
+ * EVERY eligible nurse, not a top-3 — visibility is not a recommendation
+ * (founder direction 2026-08-15). Raising a hand is interest only; the
+ * manager confirms the fill.
+ */
+export function composeOpenShiftPosted(params: {
+  staffId: string;
+  date: string;
+  shiftLabel: string;
+  unit: string;
+}): NotificationDraft {
+  return {
+    staffId: params.staffId,
+    type: "open_shift_posted",
+    title: "Open shift you could pick up",
+    body: `${params.shiftLabel} on ${params.date} (${params.unit}) needs coverage. Interested? Raise your hand from your schedule page.`,
+    href: "/my",
   };
 }

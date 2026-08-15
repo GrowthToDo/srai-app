@@ -1,6 +1,14 @@
 import { db } from "@/db";
-import { openShift, shift, shiftDefinition, staff, assignment, exceptionLog } from "@/db/schema";
-import { eq, and, aliasedTable } from "drizzle-orm";
+import {
+  openShift,
+  openShiftInterest,
+  shift,
+  shiftDefinition,
+  staff,
+  assignment,
+  exceptionLog,
+} from "@/db/schema";
+import { eq, and, aliasedTable, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { findCandidatesForShift } from "@/lib/coverage/find-candidates";
 
@@ -46,7 +54,10 @@ export async function GET() {
     .innerJoin(shift, eq(openShift.shiftId, shift.id))
     .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
     .innerJoin(staff, eq(openShift.originalStaffId, staff.id))
-    .leftJoin(originalAssignment, eq(openShift.originalAssignmentId, originalAssignment.id))
+    .leftJoin(
+      originalAssignment,
+      eq(openShift.originalAssignmentId, originalAssignment.id),
+    )
     .orderBy(shift.date)
     .all();
 
@@ -58,19 +69,61 @@ export async function GET() {
     coverageRequests.map(async (r) => {
       if (!ACTIVE_STATUSES.has(r.status)) return r;
       try {
-        const { candidates, escalationStepsChecked } = await findCandidatesForShift(
-          r.shiftId,
-          r.originalStaffId ?? undefined
-        );
+        const { candidates, escalationStepsChecked } =
+          await findCandidatesForShift(
+            r.shiftId,
+            r.originalStaffId ?? undefined,
+          );
         return { ...r, recommendations: candidates, escalationStepsChecked };
       } catch {
         // If refresh fails, fall back to stored snapshot
         return r;
       }
-    })
+    }),
   );
 
-  return NextResponse.json(enriched);
+  // Raised hands: nurses who expressed interest from their portal. Interest is
+  // a SIGNAL for the manager, never an assignment — the fill flow stays the
+  // only path onto the schedule.
+  const interestStaff = aliasedTable(staff, "interest_staff");
+  const allInterests =
+    enriched.length > 0
+      ? db
+          .select({
+            openShiftId: openShiftInterest.openShiftId,
+            staffId: openShiftInterest.staffId,
+            note: openShiftInterest.note,
+            createdAt: openShiftInterest.createdAt,
+            firstName: interestStaff.firstName,
+            lastName: interestStaff.lastName,
+          })
+          .from(openShiftInterest)
+          .innerJoin(
+            interestStaff,
+            eq(openShiftInterest.staffId, interestStaff.id),
+          )
+          .where(
+            inArray(
+              openShiftInterest.openShiftId,
+              enriched.map((r) => r.id),
+            ),
+          )
+          .all()
+      : [];
+
+  const withInterests = enriched.map((r) => ({
+    ...r,
+    interests: allInterests
+      .filter((i) => i.openShiftId === r.id)
+      .map((i) => ({
+        staffId: i.staffId,
+        staffName: `${i.firstName} ${i.lastName}`,
+        note: i.note,
+        createdAt: i.createdAt,
+      })),
+  }));
+
+  return NextResponse.json(withInterests);
 }
 
 export async function POST(request: Request) {
@@ -92,7 +145,8 @@ export async function POST(request: Request) {
     .get();
 
   const parts: string[] = [`Open shift created`];
-  if (body.priority && body.priority !== "normal") parts.push(`priority: ${body.priority}`);
+  if (body.priority && body.priority !== "normal")
+    parts.push(`priority: ${body.priority}`);
   if (body.reason) parts.push(`reason: ${body.reason}`);
   if (body.reasonDetail) parts.push(body.reasonDetail);
   const openShiftDesc = parts.join(" — ");

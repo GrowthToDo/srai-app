@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { SignedOutCard } from "@/components/nurse/signed-out-card";
 import { NurseMonthCalendar } from "@/components/nurse/nurse-month-calendar";
+import { OpenShiftBoard } from "@/components/nurse/open-shift-board";
 import {
   nextShift,
   upcomingShifts,
@@ -305,6 +306,9 @@ export default function MySchedulePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Open shifts this nurse is eligible to pick up (renders nothing when empty) */}
+      <OpenShiftBoard />
 
       {/* Month calendar */}
       <Card>

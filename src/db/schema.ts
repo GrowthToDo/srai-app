@@ -770,6 +770,8 @@ export const exceptionLog = sqliteTable(
         "open_shift_created",
         "open_shift_filled",
         "open_shift_cancelled",
+        "open_shift_interest",
+        "open_shift_interest_withdrawn",
         "schedule_auto_generated",
         "scenario_applied",
         "assignment_cancelled_for_leave",

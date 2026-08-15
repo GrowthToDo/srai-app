@@ -82,6 +82,15 @@ interface CoverageRequestData {
   originalStaffFirstName: string;
   originalStaffLastName: string;
   originalWasChargeNurse?: boolean | null;
+  // Nurses who raised a hand from their portal. A signal, not an assignment —
+  // approving one goes through the same validated approve flow as a
+  // recommendation.
+  interests?: {
+    staffId: string;
+    staffName: string;
+    note: string | null;
+    createdAt: string;
+  }[];
 }
 
 const PRIORITY_VARIANTS: Record<
@@ -216,7 +225,11 @@ export default function CoverageRequestsPage() {
       const candidate = selectedRequest.recommendations.find(
         (r) => r.staffId === candidateStaffId,
       );
-      const name = candidate?.staffName ?? "Staff member";
+      const name =
+        candidate?.staffName ??
+        selectedRequest.interests?.find((i) => i.staffId === candidateStaffId)
+          ?.staffName ??
+        "Staff member";
       addToast({
         title: "Coverage assigned",
         description: `${name} — ${format(parseISO(selectedRequest.shiftDate), "MMM d, yyyy")}`,
@@ -445,6 +458,11 @@ export default function CoverageRequestsPage() {
                               ? "Coverage Waived"
                               : STATUS_LABELS[req.status]}
                           </Badge>
+                          {(req.interests?.length ?? 0) > 0 && (
+                            <Badge variant="secondary">
+                              🖐 {req.interests!.length} volunteered
+                            </Badge>
+                          )}
                           {req.status === "cancelled" &&
                             req.reason === "leave_approved" && (
                               <p className="text-xs text-muted-foreground">
@@ -740,6 +758,59 @@ export default function CoverageRequestsPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Raised hands — nurses who volunteered from their portal. The
+                  overlap with a top-3 recommendation is the strongest signal a
+                  manager gets: eligible, ranked, AND willing. */}
+              {(selectedRequest.interests?.length ?? 0) > 0 && (
+                <div className="space-y-3">
+                  <h4 className="font-medium">
+                    Raised hands ({selectedRequest.interests!.length})
+                  </h4>
+                  {selectedRequest.interests!.map((i) => {
+                    const alsoRecommended =
+                      selectedRequest.recommendations?.some(
+                        (c) => c.staffId === i.staffId,
+                      );
+                    return (
+                      <div
+                        key={i.staffId}
+                        className="rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold">
+                                {i.staffName}
+                              </span>
+                              <Badge variant="secondary" className="text-xs">
+                                Volunteered
+                              </Badge>
+                              {alsoRecommended && (
+                                <Badge className="text-xs">
+                                  Also recommended
+                                </Badge>
+                              )}
+                            </div>
+                            {i.note && (
+                              <p className="text-xs text-muted-foreground">
+                                “{i.note}”
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            onClick={() => handleApproveCandidate(i.staffId)}
+                            variant="outline"
+                            className="shrink-0"
+                          >
+                            Approve
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button

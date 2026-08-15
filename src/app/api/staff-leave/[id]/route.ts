@@ -4,6 +4,7 @@ import {
   exceptionLog,
   assignment,
   shift,
+  shiftDefinition,
   schedule,
   unit,
   openShift,
@@ -18,6 +19,7 @@ import { findCandidatesForShift } from "@/lib/coverage/find-candidates";
 import {
   insertNotification,
   composeLeaveDecided,
+  composeOpenShiftPosted,
 } from "@/lib/notifications/notify";
 
 export async function GET(
@@ -221,9 +223,13 @@ async function handleLeaveApproval(
       ReturnType<typeof findCandidatesForShift>
     > | null = null;
     if (!isUrgent) {
+      // Full list (Infinity): every rule-eligible nurse gets the posting
+      // notification below; the manager's stored recommendations stay top-3
+      // via the slice at the insert.
       candidateResult = await findCandidatesForShift(
         a.shiftId,
         staffId, // Exclude the staff going on leave
+        Infinity,
       );
     }
 
@@ -325,7 +331,9 @@ async function handleLeaveApproval(
             reasonDetail: `Leave approved - ${candidates.length > 0 ? "replacement candidates found" : "no candidates available"}`,
             status: status,
             priority: daysUntilShift > 14 ? "low" : "normal",
-            recommendations: candidates,
+            // Manager surface keeps its top-3 contract; the full list only
+            // feeds the eligibility notifications below.
+            recommendations: candidates.slice(0, 3),
             escalationStepsChecked: escalationStepsChecked,
           })
           .returning()
@@ -352,6 +360,41 @@ async function handleLeaveApproval(
           .run();
       }
     });
+
+    // Notify every rule-eligible nurse about the new posting (non-urgent path
+    // only — the urgent path made a callout, which is manager-worked, not a
+    // board posting). Best-effort: a notify failure never breaks the approval.
+    if (!isUrgent && candidateResult) {
+      try {
+        const defInfo = db
+          .select({
+            name: shiftDefinition.name,
+            shiftType: shiftDefinition.shiftType,
+            unit: shiftDefinition.unit,
+          })
+          .from(shiftDefinition)
+          .innerJoin(shift, eq(shift.shiftDefinitionId, shiftDefinition.id))
+          .where(eq(shift.id, a.shiftId))
+          .get();
+        const shiftLabel = defInfo?.name ?? defInfo?.shiftType ?? "Shift";
+        for (const c of candidateResult.candidates) {
+          // Agency rows are placeholders, not notifiable staff.
+          if (c.source === "agency" || c.staffId === staffId) continue;
+          insertNotification(
+            db,
+            notification,
+            composeOpenShiftPosted({
+              staffId: c.staffId,
+              date: a.shiftDate,
+              shiftLabel,
+              unit: defInfo?.unit ?? a.scheduleUnit,
+            }),
+          );
+        }
+      } catch (err) {
+        console.error("[notify] open_shift_posted failed", err);
+      }
+    }
   }
 }
 

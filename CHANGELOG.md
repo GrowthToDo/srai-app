@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.9.0] - 2026-08-15
+
+### Added
+
+- **Nurse open-shift board ("raise a hand").** When approved leave or an
+  approved open swap creates an open shift, every RULE-ELIGIBLE nurse (full
+  engine eligibility, not the manager's top-3) gets an in-app notification
+  and sees the shift under "Open shifts you can pick up" on their portal,
+  with an "I'm interested" button. Interest is never assignment: the manager
+  sees volunteered nurses in the existing /open-shifts approve dialog —
+  tagged "Volunteered", with "Also recommended" when they overlap the top-3 —
+  and confirms through the same validated approve flow. Cards show a
+  "🖐 N volunteered" badge. Hands are audit-logged (raise + withdraw),
+  re-validated server-side at raise time, deduplicated, and blocked for the
+  nurse whose own absence created the vacancy. Open-swap coverage requests
+  now also store top-3 recommendations at creation.
+
+---
+
 ## [1.8.0] - 2026-08-15
 
 ### Changed
