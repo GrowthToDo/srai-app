@@ -21,7 +21,10 @@ export const ROLE_RANK: Record<string, number> = { RN: 3, LPN: 2, CNA: 1 };
  * Count individual weekend days (Saturday/Sunday) a staff member is already
  * assigned to within the schedule period. Counts days, not weekend rotations.
  */
-export function countWeekendsInSchedulePeriod(staffId: string, scheduleId: string): number {
+export function countWeekendsInSchedulePeriod(
+  staffId: string,
+  scheduleId: string,
+): number {
   const sched = db
     .select({ startDate: schedule.startDate, endDate: schedule.endDate })
     .from(schedule)
@@ -38,8 +41,13 @@ export function countWeekendsInSchedulePeriod(staffId: string, scheduleId: strin
         eq(assignment.staffId, staffId),
         gte(shift.date, sched.startDate),
         lte(shift.date, sched.endDate),
-        ne(assignment.status, "cancelled")
-      )
+        ne(assignment.status, "cancelled"),
+        // called_out / swapped days were NOT worked — they must not count
+        // toward weekend-fairness or consecutive-day fatigue (fluidity
+        // review, 2026-08-15)
+        ne(assignment.status, "called_out"),
+        ne(assignment.status, "swapped"),
+      ),
     )
     .all();
 
@@ -50,7 +58,10 @@ export function countWeekendsInSchedulePeriod(staffId: string, scheduleId: strin
  * Count consecutive working days ending the day before `shiftDate`. Walks back
  * up to 7 days, stopping at the first day with no (non-cancelled) assignment.
  */
-export function countConsecutiveDaysBefore(staffId: string, shiftDate: string): number {
+export function countConsecutiveDaysBefore(
+  staffId: string,
+  shiftDate: string,
+): number {
   let count = 0;
   for (let i = 1; i <= 7; i++) {
     const dateStr = addDays(shiftDate, -i);
@@ -62,8 +73,13 @@ export function countConsecutiveDaysBefore(staffId: string, shiftDate: string): 
         and(
           eq(assignment.staffId, staffId),
           eq(shift.date, dateStr),
-          ne(assignment.status, "cancelled")
-        )
+          ne(assignment.status, "cancelled"),
+          // called_out / swapped days were NOT worked — they must not count
+          // toward weekend-fairness or consecutive-day fatigue (fluidity
+          // review, 2026-08-15)
+          ne(assignment.status, "called_out"),
+          ne(assignment.status, "swapped"),
+        ),
       )
       .get();
     if (!hasShift) break;

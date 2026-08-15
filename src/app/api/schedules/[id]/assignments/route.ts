@@ -98,6 +98,7 @@ export async function POST(
           // matches the filters used by swap approval and find-candidates.
           ne(assignment.status, "called_out"),
           ne(assignment.status, "cancelled"),
+          ne(assignment.status, "swapped"),
         ),
       )
       .all();

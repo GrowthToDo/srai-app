@@ -9,34 +9,59 @@
  * built with `drizzle-kit push --force` against a temp file BEFORE @/db is
  * dynamically imported. The founder's live cah-scheduler.db is never touched.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  afterAll,
+  vi,
+} from "vitest";
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
+// Scratch-DB tests do real drizzle inserts + first-load of the full module
+// graph; under full-suite load the 5s default test timeout flakes.
+vi.setConfig({ testTimeout: 30_000 });
+
 const ORIGINAL_ENV = { ...process.env };
 
-let scratchDir: string;
+let baseDir: string;
+let templateDbPath: string;
 let scratchDbPath: string;
+let testSeq = 0;
 let openHandles: import("better-sqlite3").Database[] = [];
 
-beforeEach(() => {
-  scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "staffing-ctx-test-"));
-  scratchDbPath = path.join(scratchDir, "scratch.db");
+// Push once per file, byte-copy per test — a per-test push made several
+// scratch-DB files spawn concurrent npx processes under full-suite load;
+// pushes crawled past the hook timeout, and the timed-out hook left
+// DATABASE_PATH on the previous test's seeded DB → UNIQUE violations
+// (2026-08-15). Same pattern as availability-fluidity.test.ts.
+beforeAll(() => {
+  baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "staffing-ctx-test-"));
+  templateDbPath = path.join(baseDir, "template.db");
   const push = spawnSync("npx", ["drizzle-kit", "push", "--force"], {
     cwd: process.cwd(),
     shell: true,
     encoding: "utf8",
-    env: { ...process.env, DATABASE_PATH: scratchDbPath },
+    env: { ...process.env, DATABASE_PATH: templateDbPath },
   });
   if (push.status !== 0) {
     throw new Error(
-      `drizzle-kit push failed for scratch DB: ${push.stdout}\n${push.stderr}`,
+      `drizzle-kit push failed for template DB: ${push.stdout}\n${push.stderr}`,
     );
   }
+}, 60_000);
+
+beforeEach(() => {
+  scratchDbPath = path.join(baseDir, `scratch-${testSeq++}.db`);
+  fs.copyFileSync(templateDbPath, scratchDbPath);
   process.env.DATABASE_PATH = scratchDbPath;
-}, 30_000);
+});
 
 afterEach(() => {
   for (const handle of openHandles) {
@@ -48,7 +73,10 @@ afterEach(() => {
   }
   openHandles = [];
   process.env = { ...ORIGINAL_ENV };
-  fs.rmSync(scratchDir, { recursive: true, force: true });
+});
+
+afterAll(() => {
+  fs.rmSync(baseDir, { recursive: true, force: true });
 });
 
 /**

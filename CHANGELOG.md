@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.10.1] - 2026-08-15
+
+### Fixed
+
+- **Recommendations now react to callouts, leave, and swaps everywhere**
+  (founder fluidity review — the "James Wilson" scenario). A nurse's weekly
+  hours, OT projection, rest checks, weekend-fairness count, and
+  consecutive-day streak now count ONLY shifts they will actually work:
+  called_out, leave-cancelled, and swapped-away assignments free the hours in
+  every computation. Previously the open-shift ranker still counted
+  called-out hours (phantom OT), fairness counts treated called-out days as
+  worked, and swapped-away hours counted against the original nurse in
+  every surface except the swap flow itself. Also new: calling out of any
+  shift on a date makes the nurse ineligible for EVERY shift that date, in
+  both rankers, with the reason shown ("Called out of a shift this day") —
+  and swapped rows no longer inflate dashboard/audit assigned-counts or
+  analytics hours. 13 call sites aligned; 7 new scratch-DB tests pin the
+  scenario end to end.
+
+---
+
 ## [1.10.0] - 2026-08-15
 
 ### Changed

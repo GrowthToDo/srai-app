@@ -28,7 +28,11 @@ import type {
   PublicHolidayInfo,
   PriorAssignmentInfo,
 } from "./rules/types";
-import { addDays, utcDayOfWeek, getWeekendId } from "@/lib/engine/scheduler/state";
+import {
+  addDays,
+  utcDayOfWeek,
+  getWeekendId,
+} from "@/lib/engine/scheduler/state";
 
 export function buildContext(scheduleId: string): RuleContext {
   // Fetch the schedule to get unit and date range
@@ -53,7 +57,8 @@ export function buildContext(scheduleId: string): RuleContext {
     ? {
         id: unitRecord.id,
         name: unitRecord.name,
-        weekendRuleType: unitRecord.weekendRuleType as "count_per_period" | "alternate_weekends",
+        weekendRuleType: unitRecord.weekendRuleType as
+          "count_per_period" | "alternate_weekends",
         weekendShiftsRequired: unitRecord.weekendShiftsRequired,
         schedulePeriodWeeks: unitRecord.schedulePeriodWeeks,
         holidayShiftsRequired: unitRecord.holidayShiftsRequired,
@@ -86,8 +91,9 @@ export function buildContext(scheduleId: string): RuleContext {
       and(
         eq(assignment.scheduleId, scheduleId),
         ne(assignment.status, "called_out"),
-        ne(assignment.status, "cancelled")
-      )
+        ne(assignment.status, "cancelled"),
+        ne(assignment.status, "swapped"),
+      ),
     )
     .all();
 
@@ -182,7 +188,11 @@ export function buildContext(scheduleId: string): RuleContext {
   }
 
   // Fetch census bands
-  const bands = db.select().from(censusBand).where(eq(censusBand.isActive, true)).all();
+  const bands = db
+    .select()
+    .from(censusBand)
+    .where(eq(censusBand.isActive, true))
+    .all();
   const censusBandInfos: CensusBandInfo[] = bands.map((b) => ({
     id: b.id,
     minPatients: b.minPatients,
@@ -216,22 +226,19 @@ export function buildContext(scheduleId: string): RuleContext {
   // aggregate dates per staff. The eligibility check already gates by date, so
   // loading across scheduleIds is safe and means PRN staff with standing
   // availability don't lose it just because a new schedule was created.
-  const prnAvailabilityRecords = db
-    .select()
-    .from(prnAvailability)
-    .all();
+  const prnAvailabilityRecords = db.select().from(prnAvailability).all();
 
   const prnDatesByStaff = new Map<string, Set<string>>();
   for (const p of prnAvailabilityRecords) {
     const dates = prnDatesByStaff.get(p.staffId) ?? new Set<string>();
-    for (const d of ((p.availableDates as string[]) ?? [])) {
+    for (const d of (p.availableDates as string[]) ?? []) {
       dates.add(d);
     }
     prnDatesByStaff.set(p.staffId, dates);
   }
-  const prnAvailabilityInfos: PRNAvailabilityInfo[] = [...prnDatesByStaff.entries()].map(
-    ([staffId, dates]) => ({ staffId, availableDates: [...dates] })
-  );
+  const prnAvailabilityInfos: PRNAvailabilityInfo[] = [
+    ...prnDatesByStaff.entries(),
+  ].map(([staffId, dates]) => ({ staffId, availableDates: [...dates] }));
 
   // Fetch approved staff leaves that overlap with schedule dates
   const staffLeaveRecords = db
@@ -259,10 +266,12 @@ export function buildContext(scheduleId: string): RuleContext {
     .all()
     .filter((h) => h.date >= scheduleStartDate && h.date <= scheduleEndDate);
 
-  const publicHolidayInfos: PublicHolidayInfo[] = publicHolidayRecords.map((h) => ({
-    date: h.date,
-    name: h.name,
-  }));
+  const publicHolidayInfos: PublicHolidayInfo[] = publicHolidayRecords.map(
+    (h) => ({
+      date: h.date,
+      name: h.name,
+    }),
+  );
 
   // Historical weekend counts — look back one schedule period before this schedule starts.
   // Used by the scheduler's scoring function so nurses who worked many weekends recently
@@ -283,12 +292,15 @@ export function buildContext(scheduleId: string): RuleContext {
       .select({ staffId: assignment.staffId, date: shift.date })
       .from(assignment)
       .innerJoin(shift, eq(assignment.shiftId, shift.id))
-      .where(and(
-        gte(shift.date, lookbackStartStr),
-        lt(shift.date, priorWindowStart),
-        ne(assignment.status, "called_out"),
-        ne(assignment.status, "cancelled")
-      ))
+      .where(
+        and(
+          gte(shift.date, lookbackStartStr),
+          lt(shift.date, priorWindowStart),
+          ne(assignment.status, "called_out"),
+          ne(assignment.status, "cancelled"),
+          ne(assignment.status, "swapped"),
+        ),
+      )
       .all();
 
     // Count distinct weekend UNITS per staff (Sat+Sun of same week = 1 weekend).
@@ -323,13 +335,19 @@ export function buildContext(scheduleId: string): RuleContext {
       })
       .from(assignment)
       .innerJoin(shift, eq(assignment.shiftId, shift.id))
-      .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
-      .where(and(
-        gte(shift.date, priorWindowStart),
-        lt(shift.date, scheduleStartDate),
-        ne(assignment.status, "called_out"),
-        ne(assignment.status, "cancelled")
-      ))
+      .innerJoin(
+        shiftDefinition,
+        eq(shift.shiftDefinitionId, shiftDefinition.id),
+      )
+      .where(
+        and(
+          gte(shift.date, priorWindowStart),
+          lt(shift.date, scheduleStartDate),
+          ne(assignment.status, "called_out"),
+          ne(assignment.status, "cancelled"),
+          ne(assignment.status, "swapped"),
+        ),
+      )
       .all();
     priorAssignments.push(...priorRows);
   }
@@ -395,7 +413,7 @@ export function evaluateSchedule(scheduleId: string): EvaluationResult {
 
   const totalPenalty = softViolations.reduce(
     (sum, v) => sum + (v.penaltyScore ?? 0),
-    0
+    0,
   );
 
   return {

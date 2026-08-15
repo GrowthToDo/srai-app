@@ -54,7 +54,10 @@ export function getStaffingSnapshot(shiftId: string): StaffingSnapshot | null {
     .where(eq(assignment.shiftId, shiftId))
     .all();
   const assigned = rows.filter(
-    (a) => a.status !== "cancelled" && a.status !== "called_out",
+    (a) =>
+      a.status !== "cancelled" &&
+      a.status !== "called_out" &&
+      a.status !== "swapped",
   ).length;
 
   return { assigned, required, delta: assigned - required };

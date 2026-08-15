@@ -610,9 +610,10 @@ export async function checkStaffAvailability(
   }
 
   // 2. Same-date assignments: check for overlap and insufficient same-day rest
-  const existingAssignments = db
+  const sameDateRows = db
     .select({
       assignmentId: assignment.id,
+      status: assignment.status,
       shiftDate: shift.date,
       durationHours: shiftDefinition.durationHours,
       startTime: shiftDefinition.startTime,
@@ -622,13 +623,27 @@ export async function checkStaffAvailability(
     .innerJoin(shift, eq(assignment.shiftId, shift.id))
     .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
     .where(
-      and(
-        eq(assignment.staffId, staffId),
-        eq(shift.date, shiftDetails.date),
-        ne(assignment.status, "cancelled"),
-      ),
+      and(eq(assignment.staffId, staffId), eq(shift.date, shiftDetails.date)),
     )
     .all();
+
+  // A callout means "I'm not coming in that day" — a nurse who called out of
+  // ANY shift on this date is not a coverage candidate for the date, even for
+  // a non-overlapping shift. (Fluidity review, founder 2026-08-15.) A manager
+  // can still assign them manually; the recommender just won't suggest it.
+  if (sameDateRows.some((a) => a.status === "called_out")) {
+    return {
+      available: false,
+      hoursThisWeek: 0,
+      reason: "Called out of a shift this day",
+    };
+  }
+
+  // Only shifts the nurse is actually working can block via overlap/rest:
+  // cancelled (leave-released) and swapped (given away) rows are not theirs.
+  const existingAssignments = sameDateRows.filter(
+    (a) => a.status !== "cancelled" && a.status !== "swapped",
+  );
 
   for (const existing of existingAssignments) {
     if (
@@ -660,7 +675,12 @@ export async function checkStaffAvailability(
     }
   }
 
-  // 3. Weekly hours + 60h cap
+  // 3. Weekly hours + 60h cap. Only hours the nurse will ACTUALLY work count:
+  // called_out (didn't work it), cancelled (leave-released) and swapped
+  // (given away) must all free the hours — otherwise a nurse who called out
+  // of a 12h shift still ranks as if they were about to hit overtime
+  // (fluidity gap found in founder review, 2026-08-15; the callout ranker and
+  // the manual-assignment OT badge already excluded these).
   const weekAssignments = db
     .select({ durationHours: shiftDefinition.durationHours })
     .from(assignment)
@@ -672,6 +692,8 @@ export async function checkStaffAvailability(
         gte(shift.date, weekStart),
         lte(shift.date, weekEnd),
         ne(assignment.status, "cancelled"),
+        ne(assignment.status, "called_out"),
+        ne(assignment.status, "swapped"),
       ),
     )
     .all();
@@ -769,6 +791,9 @@ export async function checkStaffAvailability(
   const prevDate = format(addDays(shiftDate, -1), "yyyy-MM-dd");
   const nextDate = format(addDays(shiftDate, 1), "yyyy-MM-dd");
 
+  // Rest only matters against shifts the nurse actually works — a called-out
+  // or swapped-away D-1 shift was NOT worked, so it must not manufacture a
+  // phantom short-rest exclusion.
   const adjacentAssignments = db
     .select({
       date: shift.date,
@@ -782,6 +807,8 @@ export async function checkStaffAvailability(
       and(
         eq(assignment.staffId, staffId),
         ne(assignment.status, "cancelled"),
+        ne(assignment.status, "called_out"),
+        ne(assignment.status, "swapped"),
         or(eq(shift.date, prevDate), eq(shift.date, nextDate)),
       ),
     )

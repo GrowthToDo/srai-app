@@ -140,9 +140,25 @@ export function getEscalationOptions(
     .where(and(gte(shift.date, prevDate), lte(shift.date, nextDate)))
     .all();
 
+  // A callout means "not coming in that day" — track who called out of ANY
+  // shift on the target date, so they are marked ineligible below instead of
+  // being treated as free (fluidity review, 2026-08-15).
+  const calledOutOnDate = new Set(
+    nearbyRaw
+      .filter((a) => a.status === "called_out" && a.date === shiftDate)
+      .map((a) => a.staffId),
+  );
+
   const nearbyByStaff = new Map<string, typeof nearbyRaw>();
   for (const a of nearbyRaw) {
-    if (a.status === "called_out" || a.status === "cancelled") continue;
+    // Only shifts actually worked can occupy time or constrain rest —
+    // called_out, cancelled and swapped rows are not this nurse's work.
+    if (
+      a.status === "called_out" ||
+      a.status === "cancelled" ||
+      a.status === "swapped"
+    )
+      continue;
     const list = nearbyByStaff.get(a.staffId) ?? [];
     list.push(a);
     nearbyByStaff.set(a.staffId, list);
@@ -164,7 +180,13 @@ export function getEscalationOptions(
 
   const weeklyByStaff = new Map<string, number>();
   for (const a of weeklyRaw) {
-    if (a.status === "called_out" || a.status === "cancelled") continue;
+    // swapped = given away — those hours belong to whoever took the shift.
+    if (
+      a.status === "called_out" ||
+      a.status === "cancelled" ||
+      a.status === "swapped"
+    )
+      continue;
     const prev = weeklyByStaff.get(a.staffId) ?? 0;
     weeklyByStaff.set(a.staffId, prev + (a.durationHours ?? 0));
   }
@@ -230,6 +252,11 @@ export function getEscalationOptions(
     // Approved leave
     if (onLeave.has(s.id)) {
       ineligibilityReasons.push("On approved leave");
+    }
+
+    // Called out of any shift on this date = not coming in today.
+    if (calledOutOnDate.has(s.id)) {
+      ineligibilityReasons.push("Called out of a shift this day");
     }
 
     // PRN availability — a per-diem nurse who did not offer this date is

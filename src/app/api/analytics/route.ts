@@ -21,8 +21,19 @@ export async function GET(request: Request) {
 
     // Resolve target schedule — use explicit ID if provided, otherwise most recent by start date
     const targetSchedule = paramScheduleId
-      ? await db.select().from(schedule).where(eq(schedule.id, paramScheduleId)).limit(1).then(r => r[0] ?? null)
-      : await db.select().from(schedule).where(ne(schedule.status, "archived")).orderBy(desc(schedule.startDate)).limit(1).then(r => r[0] ?? null);
+      ? await db
+          .select()
+          .from(schedule)
+          .where(eq(schedule.id, paramScheduleId))
+          .limit(1)
+          .then((r) => r[0] ?? null)
+      : await db
+          .select()
+          .from(schedule)
+          .where(ne(schedule.status, "archived"))
+          .orderBy(desc(schedule.startDate))
+          .limit(1)
+          .then((r) => r[0] ?? null);
 
     if (!targetSchedule) {
       return NextResponse.json({
@@ -37,7 +48,12 @@ export async function GET(request: Request) {
         holidayBalance: [],
         costAnalysis: { overtime: 0, regular: 0, agency: 0 },
         staffWorkload: [],
-        complianceMetrics: { hardViolations: 0, softViolations: 0, overtimeInstances: 0, unfilledShifts: 0 },
+        complianceMetrics: {
+          hardViolations: 0,
+          softViolations: 0,
+          overtimeInstances: 0,
+          unfilledShifts: 0,
+        },
       });
     }
 
@@ -47,13 +63,17 @@ export async function GET(request: Request) {
     const scheduleWeeks = Math.max(
       1,
       Math.round(
-        (new Date(targetSchedule.endDate).getTime() - new Date(targetSchedule.startDate).getTime()) /
-          (7 * 24 * 60 * 60 * 1000)
-      )
+        (new Date(targetSchedule.endDate).getTime() -
+          new Date(targetSchedule.startDate).getTime()) /
+          (7 * 24 * 60 * 60 * 1000),
+      ),
     );
 
     // Load census bands once (shared by fill rate + unfilled shift calculations)
-    const bands = await db.select().from(censusBand).where(eq(censusBand.isActive, true));
+    const bands = await db
+      .select()
+      .from(censusBand)
+      .where(eq(censusBand.isActive, true));
 
     // ─── 1. Fill Rate Trend ───────────────────────────────────────────────────
 
@@ -70,7 +90,10 @@ export async function GET(request: Request) {
         defRequired: shiftDefinition.requiredStaffCount,
       })
       .from(shift)
-      .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
+      .innerJoin(
+        shiftDefinition,
+        eq(shift.shiftDefinitionId, shiftDefinition.id),
+      )
       .where(eq(shift.scheduleId, scheduleId));
 
     // Load active assignment counts per shift (exclude cancelled + called_out)
@@ -84,19 +107,24 @@ export async function GET(request: Request) {
               and(
                 inArray(assignment.shiftId, shiftIds),
                 ne(assignment.status, "cancelled"),
-                ne(assignment.status, "called_out")
-              )
+                ne(assignment.status, "swapped"),
+                ne(assignment.status, "called_out"),
+              ),
             )
         : [];
 
     const activeCountByShift = new Map<string, number>();
     for (const a of activeAssignments) {
-      activeCountByShift.set(a.shiftId, (activeCountByShift.get(a.shiftId) ?? 0) + 1);
+      activeCountByShift.set(
+        a.shiftId,
+        (activeCountByShift.get(a.shiftId) ?? 0) + 1,
+      );
     }
 
     // Group by ISO week and calculate fill rate using census-band-derived required counts
     // Use Monday as week start (matching the assignment dialog and schedule grid display)
-    const weeklyFillRate: { [key: string]: { total: number; filled: number } } = {};
+    const weeklyFillRate: { [key: string]: { total: number; filled: number } } =
+      {};
     for (const s of shiftsWithData) {
       const date = new Date(s.date);
       const weekStart = new Date(date);
@@ -106,10 +134,16 @@ export async function GET(request: Request) {
 
       const base = s.requiredStaff ?? s.defRequired;
       const required = getEffectiveRequired(
-        s.censusBandId, s.acuityLevel, s.defUnit, s.actualCensus, base, bands
+        s.censusBandId,
+        s.acuityLevel,
+        s.defUnit,
+        s.actualCensus,
+        base,
+        bands,
       );
 
-      if (!weeklyFillRate[weekKey]) weeklyFillRate[weekKey] = { total: 0, filled: 0 };
+      if (!weeklyFillRate[weekKey])
+        weeklyFillRate[weekKey] = { total: 0, filled: 0 };
       weeklyFillRate[weekKey].total += required;
       weeklyFillRate[weekKey].filled += activeCountByShift.get(s.shiftId) ?? 0;
     }
@@ -117,8 +151,12 @@ export async function GET(request: Request) {
     const fillRateTrend = Object.entries(weeklyFillRate)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([week, data]) => ({
-        label: new Date(week).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        value: data.total > 0 ? Math.round((data.filled / data.total) * 100) : 0,
+        label: new Date(week).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+        value:
+          data.total > 0 ? Math.round((data.filled / data.total) * 100) : 0,
       }))
       .slice(0, 6);
 
@@ -133,13 +171,17 @@ export async function GET(request: Request) {
       .from(assignment)
       .innerJoin(staff, eq(assignment.staffId, staff.id))
       .innerJoin(shift, eq(assignment.shiftId, shift.id))
-      .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
+      .innerJoin(
+        shiftDefinition,
+        eq(shift.shiftDefinitionId, shiftDefinition.id),
+      )
       .where(
         and(
           eq(shift.scheduleId, scheduleId),
           ne(assignment.status, "cancelled"),
-          ne(assignment.status, "called_out")
-        )
+          ne(assignment.status, "swapped"),
+          ne(assignment.status, "called_out"),
+        ),
       )
       .groupBy(assignment.staffId, staff.firstName, staff.lastName)
       .orderBy(desc(sql`sum(${shiftDefinition.durationHours})`))
@@ -155,8 +197,8 @@ export async function GET(request: Request) {
           overtimeHours > overtimeThreshold * 0.2
             ? "#ef4444"
             : overtimeHours > overtimeThreshold * 0.1
-            ? "#f59e0b"
-            : "#3B82F6",
+              ? "#f59e0b"
+              : "#3B82F6",
       };
     });
 
@@ -183,7 +225,10 @@ export async function GET(request: Request) {
     const calloutTrend = Object.entries(weeklyCallouts)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([week, count]) => ({
-        label: new Date(week).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        label: new Date(week).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
         value: count,
       }))
       .slice(-4);
@@ -203,9 +248,10 @@ export async function GET(request: Request) {
         and(
           eq(shift.scheduleId, scheduleId),
           ne(assignment.status, "cancelled"),
+          ne(assignment.status, "swapped"),
           ne(assignment.status, "called_out"),
-          sql`strftime('%w', ${shift.date}) IN ('0', '6')`
-        )
+          sql`strftime('%w', ${shift.date}) IN ('0', '6')`,
+        ),
       )
       .groupBy(assignment.staffId, staff.firstName, staff.lastName)
       .orderBy(desc(sql`count(${assignment.id})`))
@@ -214,7 +260,12 @@ export async function GET(request: Request) {
     const weekendDistribution = weekendAssignments.map((s) => ({
       label: `${s.firstName.substring(0, 1)}. ${s.lastName}`,
       value: s.weekendCount,
-      color: s.weekendCount > 4 ? "#ef4444" : s.weekendCount > 2 ? "#f59e0b" : "#3B82F6",
+      color:
+        s.weekendCount > 4
+          ? "#ef4444"
+          : s.weekendCount > 2
+            ? "#f59e0b"
+            : "#3B82F6",
     }));
 
     // ─── 5. Holiday Balance (this year) ──────────────────────────────────────
@@ -236,7 +287,12 @@ export async function GET(request: Request) {
     const holidayBalance = holidayAssignments.map((s) => ({
       label: `${s.firstName.substring(0, 1)}. ${s.lastName}`,
       value: s.holidayCount,
-      color: s.holidayCount > 3 ? "#ef4444" : s.holidayCount > 1 ? "#f59e0b" : "#3B82F6",
+      color:
+        s.holidayCount > 3
+          ? "#ef4444"
+          : s.holidayCount > 1
+            ? "#f59e0b"
+            : "#3B82F6",
     }));
 
     // ─── 6. Cost Analysis (coming soon — kept in API for future use) ──────────
@@ -254,13 +310,17 @@ export async function GET(request: Request) {
       .from(assignment)
       .innerJoin(staff, eq(assignment.staffId, staff.id))
       .innerJoin(shift, eq(assignment.shiftId, shift.id))
-      .innerJoin(shiftDefinition, eq(shift.shiftDefinitionId, shiftDefinition.id))
+      .innerJoin(
+        shiftDefinition,
+        eq(shift.shiftDefinitionId, shiftDefinition.id),
+      )
       .where(
         and(
           eq(shift.scheduleId, scheduleId),
           ne(assignment.status, "cancelled"),
-          ne(assignment.status, "called_out")
-        )
+          ne(assignment.status, "swapped"),
+          ne(assignment.status, "called_out"),
+        ),
       )
       .groupBy(staff.firstName, staff.lastName)
       .orderBy(desc(sql`sum(${shiftDefinition.durationHours})`))
@@ -273,15 +333,18 @@ export async function GET(request: Request) {
         s.totalHours > overtimeThreshold * 1.1
           ? "#ef4444"
           : s.totalHours > overtimeThreshold
-          ? "#f59e0b"
-          : "#3B82F6",
+            ? "#f59e0b"
+            : "#3B82F6",
     }));
 
     // ─── 8. Compliance Metrics ────────────────────────────────────────────────
 
     // Violations from most recent scenario for this schedule
     const latestScenario = await db
-      .select({ hardViolations: scenario.hardViolations, softViolations: scenario.softViolations })
+      .select({
+        hardViolations: scenario.hardViolations,
+        softViolations: scenario.softViolations,
+      })
       .from(scenario)
       .where(eq(scenario.scheduleId, scheduleId))
       .orderBy(desc(scenario.createdAt))
@@ -300,18 +363,37 @@ export async function GET(request: Request) {
       .select({ count: sql<number>`count(*)` })
       .from(assignment)
       .innerJoin(shift, eq(assignment.shiftId, shift.id))
-      .where(and(eq(shift.scheduleId, scheduleId), eq(assignment.isOvertime, true)))
+      .where(
+        and(eq(shift.scheduleId, scheduleId), eq(assignment.isOvertime, true)),
+      )
       .then((r) => r[0]?.count ?? 0);
 
     // Unfilled shifts using census-band-derived required counts
     const totalRequired = shiftsWithData.reduce((sum, s) => {
       const base = s.requiredStaff ?? s.defRequired;
-      return sum + getEffectiveRequired(s.censusBandId, s.acuityLevel, s.defUnit, s.actualCensus, base, bands);
+      return (
+        sum +
+        getEffectiveRequired(
+          s.censusBandId,
+          s.acuityLevel,
+          s.defUnit,
+          s.actualCensus,
+          base,
+          bands,
+        )
+      );
     }, 0);
     const totalFilled = activeAssignments.length;
     const unfilledShifts = shiftsWithData.filter((s) => {
       const base = s.requiredStaff ?? s.defRequired;
-      const required = getEffectiveRequired(s.censusBandId, s.acuityLevel, s.defUnit, s.actualCensus, base, bands);
+      const required = getEffectiveRequired(
+        s.censusBandId,
+        s.acuityLevel,
+        s.defUnit,
+        s.actualCensus,
+        base,
+        bands,
+      );
       return (activeCountByShift.get(s.shiftId) ?? 0) < required;
     }).length;
 
@@ -336,6 +418,9 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Analytics API error:", error);
-    return NextResponse.json({ error: "Failed to fetch analytics data" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch analytics data" },
+      { status: 500 },
+    );
   }
 }
