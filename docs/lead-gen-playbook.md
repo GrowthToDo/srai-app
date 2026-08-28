@@ -87,6 +87,16 @@ LinkedIn if it exists (many won't — that's normal here).
   citations) until a signal changes. Rescore quarterly.
 - Every payload includes: demo URL, flat price, "first schedule in under
   two weeks" (service mode — canonical claims per facts-dossier only).
+- **Hook freshness rule (learned 2026-08-28).** Personalization hooks are
+  DURABLE (identity/state: career history, an award as standing, an ongoing
+  turnaround or expansion) or PERISHABLE (events: congratulations, "new
+  role"/"first 100 days", news pieces, open postings). Perishable hooks
+  expire ~8 weeks after the event; messages are drafted at research time
+  but sent later, so every send gets a 2-minute freshness check: person
+  still in seat, posting still live, event still recent, tense still true
+  (a building "going up" may have opened). Stale perishable hook → reframe
+  as durable identity or cut. Quoting someone's own public words back to
+  them is durable — congratulating them on old news is not.
 
 ## Cadence + hygiene
 
