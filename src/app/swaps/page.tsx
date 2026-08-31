@@ -69,6 +69,16 @@ interface StaffMember {
   firstName: string;
   lastName: string;
   role: string;
+  employmentType: string;
+}
+
+/** Empty-state copy for the assignment picker: per-diem staff legitimately
+ * hold no rotation shifts, so "no assignments" needs the why, not a dead end. */
+function noAssignmentsCopy(staffList: StaffMember[], staffId: string): string {
+  const member = staffList.find((s) => s.id === staffId);
+  return member?.employmentType === "per_diem"
+    ? "Per-diem staff have no scheduled shifts to swap — they pick up open shifts instead."
+    : "No upcoming assignments found — check that a published schedule covers the coming weeks.";
 }
 
 interface AssignmentOption {
@@ -592,7 +602,7 @@ export default function SwapsPage() {
                   <Label>Shift to swap away</Label>
                   {requestingAssignments.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No upcoming assignments found.
+                      {noAssignmentsCopy(allStaff, requestingStaffId)}
                     </p>
                   ) : (
                     <Select
@@ -653,7 +663,7 @@ export default function SwapsPage() {
                   <Label>Shift to swap into</Label>
                   {targetAssignments.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No upcoming assignments found.
+                      {noAssignmentsCopy(allStaff, targetStaffId)}
                     </p>
                   ) : (
                     <Select

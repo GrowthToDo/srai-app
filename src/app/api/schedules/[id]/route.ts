@@ -19,7 +19,7 @@ import {
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
@@ -102,7 +102,10 @@ export async function GET(
 
   // Get unit minimums — the absolute floor regardless of census level
   const schedUnit = db
-    .select({ minStaffDay: unit.minStaffDay, minStaffNight: unit.minStaffNight })
+    .select({
+      minStaffDay: unit.minStaffDay,
+      minStaffNight: unit.minStaffNight,
+    })
     .from(unit)
     .where(eq(unit.name, sched.unit))
     .get();
@@ -121,7 +124,7 @@ export async function GET(
     unitName: string | null,
     actualCensus: number | null,
     baseRequired: number,
-    shiftType: string
+    shiftType: string,
   ): number {
     let censusRequired: number;
 
@@ -133,7 +136,9 @@ export async function GET(
         censusRequired = baseRequired;
       }
     } else if (acuityLevel && unitName) {
-      const band = censusBands.find((b) => b.color === acuityLevel && b.unit === unitName);
+      const band = censusBands.find(
+        (b) => b.color === acuityLevel && b.unit === unitName,
+      );
       if (band) {
         censusRequired = band.requiredRNs + band.requiredCNAs;
       } else {
@@ -141,9 +146,11 @@ export async function GET(
       }
     } else if (actualCensus !== null) {
       const band = censusBands.find(
-        (b) => actualCensus >= b.minPatients && actualCensus <= b.maxPatients
+        (b) => actualCensus >= b.minPatients && actualCensus <= b.maxPatients,
       );
-      censusRequired = band ? Math.max(band.requiredRNs + band.requiredCNAs, baseRequired) : baseRequired;
+      censusRequired = band
+        ? Math.max(band.requiredRNs + band.requiredCNAs, baseRequired)
+        : baseRequired;
     } else {
       censusRequired = baseRequired;
     }
@@ -158,7 +165,12 @@ export async function GET(
   const shiftsWithAssignments = shifts.map((s) => {
     const baseRequired = s.requiredStaffCount ?? s.defRequiredStaff;
     const effectiveRequired = getEffectiveRequired(
-      s.censusBandId, s.acuityLevel, s.defUnit, s.actualCensus, baseRequired, s.defShiftType
+      s.censusBandId,
+      s.acuityLevel,
+      s.defUnit,
+      s.actualCensus,
+      baseRequired,
+      s.defShiftType,
     );
 
     return {
@@ -191,12 +203,33 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const body = await request.json();
 
   const existing = db.select().from(schedule).where(eq(schedule.id, id)).get();
+
+  // Publishing an empty schedule is always a mistake: nurses would see a blank
+  // period, and everything downstream that reads "the published schedule"
+  // (swaps, callouts, practice mode) starves. The compliance gate can't catch
+  // it — an empty schedule has no violations — so guard the transition here.
+  if (body.status === "published" && existing?.status !== "published") {
+    const hasAssignments = db
+      .select({ id: assignment.id })
+      .from(assignment)
+      .where(eq(assignment.scheduleId, id))
+      .all().length;
+    if (hasAssignments === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This schedule has no staff assignments yet. Generate drafts and apply one before publishing.",
+        },
+        { status: 422 },
+      );
+    }
+  }
 
   const updated = db
     .update(schedule)
@@ -205,7 +238,8 @@ export async function PUT(
       status: body.status,
       notes: body.notes,
       updatedAt: new Date().toISOString(),
-      publishedAt: body.status === "published" ? new Date().toISOString() : undefined,
+      publishedAt:
+        body.status === "published" ? new Date().toISOString() : undefined,
     })
     .where(eq(schedule.id, id))
     .returning()
@@ -213,17 +247,22 @@ export async function PUT(
 
   if (updated) {
     const scheduleAction =
-      body.status === "published" ? "published" :
-      body.status === "archived" ? "archived" : "updated";
-    db.insert(exceptionLog).values({
-      entityType: "schedule",
-      entityId: id,
-      action: scheduleAction,
-      description: `Schedule ${scheduleAction}: ${updated.name}`,
-      previousState: existing ? { status: existing.status } : undefined,
-      newState: { status: updated.status },
-      performedBy: "nurse_manager",
-    }).run();
+      body.status === "published"
+        ? "published"
+        : body.status === "archived"
+          ? "archived"
+          : "updated";
+    db.insert(exceptionLog)
+      .values({
+        entityType: "schedule",
+        entityId: id,
+        action: scheduleAction,
+        description: `Schedule ${scheduleAction}: ${updated.name}`,
+        previousState: existing ? { status: existing.status } : undefined,
+        newState: { status: updated.status },
+        performedBy: "nurse_manager",
+      })
+      .run();
 
     // Phase 3 notifications: on a draft→published transition, tell every staff
     // member with a live assignment in this schedule. Best-effort — a notify
@@ -241,8 +280,8 @@ export async function PUT(
             and(
               eq(assignment.scheduleId, id),
               ne(assignment.status, "cancelled"),
-              ne(assignment.status, "called_out")
-            )
+              ne(assignment.status, "called_out"),
+            ),
           )
           .all();
         const distinctStaffIds = [
@@ -257,7 +296,7 @@ export async function PUT(
               scheduleName: updated.name,
               startDate: updated.startDate,
               endDate: updated.endDate,
-            })
+            }),
           );
         }
       } catch (err) {

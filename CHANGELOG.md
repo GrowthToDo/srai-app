@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.10.2] - 2026-08-31
+
+### Fixed
+
+- **Every dialog now scrolls when taller than the viewport** (founder demo
+  review: the per-diem availability dialog's Save button was unreachable).
+  Root cause: the base `DialogContent` had no max-height/overflow — seven
+  dialogs had already patched this individually, and each new dialog
+  regressed. The cap now lives in the base component
+  (`max-h-[calc(100dvh-4rem)] overflow-y-auto`), so no dialog can regress
+  this way again.
+- **Publishing an empty schedule is now blocked** (HTTP 422: "Generate
+  drafts and apply one before publishing"). The compliance gate could not
+  catch it — an empty schedule has no violations — and a published-but-empty
+  schedule starves everything that reads the published schedule (swap
+  dialog, callout escalation, practice mode). This is how the demo got into
+  the state the founder reported.
+- **Practice mode tells the truth about what is missing.** A manager who had
+  just published was still told to "publish a schedule first". The
+  precondition check now distinguishes: no published schedule at all / a
+  published schedule with no shifts in the next 14 days / a specific missing
+  ingredient (named in the message). Candidate windows also follow the 7-day
+  callout threshold instead of arbitrary narrower ones: short-notice example
+  2-6 days out (was 3-6), planned-leave example 8-14 (was 10-14).
+- **Swap dialog explains empty assignment lists.** Picking a per-diem nurse
+  now says they have no rotation shifts to swap (they pick up open shifts);
+  other staff get a pointer to check that a published schedule covers the
+  coming weeks.
+
+### Tests
+
+- 8 new (743 total): empty-publish guard (4, mock pattern) and
+  practice-examples preconditions/windows (4, scratch-DB pattern).
+
 ## [1.10.1] - 2026-08-15
 
 ### Fixed

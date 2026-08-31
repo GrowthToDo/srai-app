@@ -9,7 +9,16 @@ import {
   callout,
   openShift,
 } from "@/db/schema";
-import { eq, and, gte, lte, inArray, like, or, aliasedTable } from "drizzle-orm";
+import {
+  eq,
+  and,
+  gte,
+  lte,
+  inArray,
+  like,
+  or,
+  aliasedTable,
+} from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 /**
@@ -79,8 +88,8 @@ function publishedFutureAssignments() {
         eq(schedule.status, "published"),
         eq(assignment.status, "assigned"),
         gte(shift.date, today),
-        lte(shift.date, horizon)
-      )
+        lte(shift.date, horizon),
+      ),
     )
     .all();
 }
@@ -111,28 +120,50 @@ export async function POST() {
         error:
           "Practice examples already exist. Remove them before creating new ones.",
       },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
   const rows = publishedFutureAssignments();
 
-  // Leave A: a staff member with an assigned shift 3-6 days out.
+  // Nothing to work with at all: tell the manager exactly which precondition
+  // is missing instead of one catch-all message (a manager who HAS published
+  // must learn the schedule doesn't cover the coming two weeks, not be told
+  // to "publish first" again).
+  if (rows.length === 0) {
+    const anyPublished = db
+      .select({ id: schedule.id })
+      .from(schedule)
+      .where(eq(schedule.status, "published"))
+      .get();
+    return NextResponse.json(
+      {
+        error: anyPublished
+          ? "Your published schedule has no upcoming shifts in the next 14 days. Publish a schedule that covers the coming two weeks (generate drafts and apply one so it has assignments), then start practice mode again."
+          : "Publish a schedule first — practice mode uses your real roster and your live published schedule.",
+      },
+      { status: 422 },
+    );
+  }
+
+  // Leave A: a staff member with an assigned shift 2-6 days out (inside the
+  // 7-day callout threshold, far enough out to act on).
   const leaveACandidate = rows.find((r) => {
     const d = daysFromToday(r.shiftDate);
-    return d >= 3 && d <= 6;
+    return d >= 2 && d <= 6;
   });
 
-  // Leave B: a DIFFERENT staff member with an assigned shift 10-14 days out.
+  // Leave B: a DIFFERENT staff member with an assigned shift 8-14 days out
+  // (anything beyond the 7-day threshold lands as an open shift).
   const leaveBCandidate = rows.find((r) => {
     const d = daysFromToday(r.shiftDate);
-    return d >= 10 && d <= 14 && r.staffId !== leaveACandidate?.staffId;
+    return d >= 8 && d <= 14 && r.staffId !== leaveACandidate?.staffId;
   });
 
   // Swap: two RNs with assigned shifts on DIFFERENT dates. Prefer staff not
   // already used for Leave A/B so the tutorial records stay distinct.
   const usedStaff = new Set(
-    [leaveACandidate?.staffId, leaveBCandidate?.staffId].filter(Boolean)
+    [leaveACandidate?.staffId, leaveBCandidate?.staffId].filter(Boolean),
   );
   const rnRows = rows.filter((r) => r.role === "RN");
   let swapReq: (typeof rows)[number] | undefined;
@@ -165,12 +196,26 @@ export async function POST() {
   }
 
   if (!leaveACandidate || !leaveBCandidate || !swapReq || !swapTgt) {
+    const missing: string[] = [];
+    if (!leaveACandidate)
+      missing.push(
+        "an assigned shift 2-6 days from today (short-notice example)",
+      );
+    if (!leaveBCandidate)
+      missing.push(
+        "an assigned shift 8-14 days out on a different nurse (planned-leave example)",
+      );
+    if (!swapReq || !swapTgt)
+      missing.push(
+        "two RNs with assigned shifts on different dates (swap example)",
+      );
     return NextResponse.json(
       {
-        error:
-          "Publish a schedule first — practice mode uses your real roster. We could not find a published schedule with suitable assignments in the next 14 days (need one short-notice shift, one planned shift on a different nurse, and two RNs on different dates to trade).",
+        error: `Your published schedule can't support practice mode yet — it is missing ${missing.join(
+          "; ",
+        )}. Publishing a full schedule period that starts within the next few days fixes this.`,
       },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -243,7 +288,7 @@ export async function POST() {
         },
       },
     },
-    { status: 201 }
+    { status: 201 },
   );
 }
 
@@ -281,8 +326,10 @@ function findPracticeLeaves(): {
     .where(like(staffLeave.notes, `%${PRACTICE}%`))
     .all();
 
-  const leaveA = leaves.find((l) => (l.notes ?? "").includes(LEAVE_A_NOTE)) ?? null;
-  const leaveB = leaves.find((l) => (l.notes ?? "").includes(LEAVE_B_NOTE)) ?? null;
+  const leaveA =
+    leaves.find((l) => (l.notes ?? "").includes(LEAVE_A_NOTE)) ?? null;
+  const leaveB =
+    leaves.find((l) => (l.notes ?? "").includes(LEAVE_B_NOTE)) ?? null;
   return { leaveA, leaveB };
 }
 
@@ -322,7 +369,7 @@ function findPracticeSwap(): PracticeSwapRow | null {
       .from(shiftSwapRequest)
       .leftJoin(
         requestingStaff,
-        eq(shiftSwapRequest.requestingStaffId, requestingStaff.id)
+        eq(shiftSwapRequest.requestingStaffId, requestingStaff.id),
       )
       .leftJoin(targetStaff, eq(shiftSwapRequest.targetStaffId, targetStaff.id))
       .where(like(shiftSwapRequest.notes, `%${PRACTICE}%`))
@@ -333,7 +380,7 @@ function findPracticeSwap(): PracticeSwapRow | null {
 /** Join a first/last name pair into a display name, or null when absent. */
 function joinName(
   first: string | null | undefined,
-  last: string | null | undefined
+  last: string | null | undefined,
 ): string | null {
   const name = `${first ?? ""} ${last ?? ""}`.trim();
   return name.length > 0 ? name : null;
@@ -354,8 +401,8 @@ function affectedAssignmentIds(leave: PracticeLeaveRow): string[] {
       and(
         eq(assignment.staffId, leave.staffId),
         gte(shift.date, leave.startDate),
-        lte(shift.date, leave.endDate)
-      )
+        lte(shift.date, leave.endDate),
+      ),
     )
     .all()
     .map((r) => r.id);
@@ -425,7 +472,7 @@ export async function GET() {
             status: swap.status,
             requestingName: joinName(
               swap.requestingFirstName,
-              swap.requestingLastName
+              swap.requestingLastName,
             ),
             targetName: joinName(swap.targetFirstName, swap.targetLastName),
           }
@@ -459,9 +506,7 @@ export async function DELETE() {
     // nurses simply swap back conceptually. We do not un-swap because a directed
     // swap leaves both assignments valid and assigned (the exception log records it).
     if (swap) {
-      db.delete(shiftSwapRequest)
-        .where(eq(shiftSwapRequest.id, swap.id))
-        .run();
+      db.delete(shiftSwapRequest).where(eq(shiftSwapRequest.id, swap.id)).run();
       removed.swaps += 1;
     }
 
@@ -492,8 +537,8 @@ export async function DELETE() {
               and(
                 eq(assignment.shiftId, c.shiftId),
                 eq(assignment.staffId, c.replacementStaffId),
-                eq(assignment.assignmentSource, "callout_replacement")
-              )
+                eq(assignment.assignmentSource, "callout_replacement"),
+              ),
             )
             .run();
           removed.replacementAssignments += del.changes ?? 0;
@@ -539,9 +584,9 @@ export async function DELETE() {
             inArray(assignment.id, ids),
             or(
               eq(assignment.status, "cancelled"),
-              eq(assignment.status, "called_out")
-            )
-          )
+              eq(assignment.status, "called_out"),
+            ),
+          ),
         )
         .run();
       removed.restoredAssignments += restore.changes ?? 0;
