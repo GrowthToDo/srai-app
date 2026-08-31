@@ -89,6 +89,8 @@ function dayOut(n: number): string {
  */
 async function seed(opts: {
   scheduleStatus: "draft" | "published";
+  /** Schedule period as day offsets from today; defaults to [0, 27]. */
+  scheduleRange?: { start: number; end: number };
   shifts: { staffId: string; role: "RN" | "LPN"; daysOut: number }[];
 }) {
   vi.resetModules();
@@ -116,8 +118,8 @@ async function seed(opts: {
     .values({
       id: "sch1",
       name: "Test period",
-      startDate: dayOut(0),
-      endDate: dayOut(27),
+      startDate: dayOut(opts.scheduleRange?.start ?? 0),
+      endDate: dayOut(opts.scheduleRange?.end ?? 27),
       status: opts.scheduleStatus,
     })
     .run();
@@ -177,6 +179,25 @@ describe("POST /api/practice-examples preconditions", () => {
     const { status, body } = await postAndParse(route);
     expect(status).toBe(422);
     expect(body.error).toMatch(/Publish a schedule first/);
+  });
+
+  it("published schedule already over: names the end date, not 'publish first'", async () => {
+    // Founder's live case 2026-08-31: period ran Aug 17-30, today is the 31st.
+    // Offsets stay ≥2 days in the past so the check is TZ-safe (the window
+    // query's today-string is UTC-derived while daysFromToday is local).
+    const route = await seed({
+      scheduleStatus: "published",
+      scheduleRange: { start: -16, end: -2 },
+      shifts: [
+        { staffId: "nurseA", role: "RN", daysOut: -3 },
+        { staffId: "nurseB", role: "RN", daysOut: -2 },
+      ],
+    });
+    const { status, body } = await postAndParse(route);
+    expect(status).toBe(422);
+    expect(body.error).toMatch(/ended on \d{4}-\d{2}-\d{2}/);
+    expect(body.error).toMatch(/no schedule covers today/);
+    expect(body.error).not.toMatch(/Publish a schedule first/);
   });
 
   it("published but nothing in the next 14 days: says so instead of 'publish first'", async () => {

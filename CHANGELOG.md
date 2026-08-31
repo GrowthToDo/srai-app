@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.10.3] - 2026-08-31
+
+### Fixed
+
+- **Schedule expiry is now loud, not silent** (founder root-caused the live
+  incident: the published period ran Aug 17-30, and on the 31st everything
+  reading "the published schedule" went dark with no explanation). The
+  dashboard's ending-soon alert only fired 0-7 days BEFORE the end — the day
+  after, it vanished. The dashboard API now reports `scheduleEnded` when the
+  most recent period is over with nothing following, and the dashboard shows
+  an urgent alert: "No schedule covers today — the last one ended {date}.
+  Create and publish the next period."
+- **Practice mode names the ended schedule.** When the latest published
+  schedule's end date is in the past, the message now says "Your published
+  schedule ended on {date}, so no schedule covers today" instead of the
+  generic no-shifts-in-14-days wording.
+
+### Tests
+
+- 4 new (747 total): dashboard coverage states (ended / ending-soon / quiet,
+  scratch-DB) and the ended-schedule practice-mode message.
+
 ## [1.10.2] - 2026-08-31
 
 ### Fixed

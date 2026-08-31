@@ -181,6 +181,7 @@ export async function GET() {
 
   // Schedule ending soon: warn if ≤7 days remain AND no next schedule exists yet
   let scheduleEndingSoon: { daysUntilEnd: number } | null = null;
+  let scheduleEnded: { endDate: string; daysAgo: number } | null = null;
   if (latestSchedule) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -198,6 +199,15 @@ export async function GET() {
       if (!nextSchedule) {
         scheduleEndingSoon = { daysUntilEnd };
       }
+    } else if (daysUntilEnd < 0) {
+      // The most recent period is over and nothing follows it. This must be
+      // the loudest state, not a silent one — the day after a schedule ends
+      // is exactly when swaps, callouts, and practice mode all go dark
+      // (founder-reported live gap, 2026-08-31).
+      scheduleEnded = {
+        endDate: latestSchedule.endDate,
+        daysAgo: -daysUntilEnd,
+      };
     }
   }
 
@@ -234,6 +244,7 @@ export async function GET() {
     openShiftsCount,
     prnMissingCount,
     scheduleEndingSoon,
+    scheduleEnded,
     unitsCount,
     recentAudit,
   });

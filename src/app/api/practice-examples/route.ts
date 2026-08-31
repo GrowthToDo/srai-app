@@ -18,6 +18,7 @@ import {
   like,
   or,
   aliasedTable,
+  desc,
 } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -131,19 +132,19 @@ export async function POST() {
   // must learn the schedule doesn't cover the coming two weeks, not be told
   // to "publish first" again).
   if (rows.length === 0) {
-    const anyPublished = db
-      .select({ id: schedule.id })
+    const latestPublished = db
+      .select({ endDate: schedule.endDate })
       .from(schedule)
       .where(eq(schedule.status, "published"))
+      .orderBy(desc(schedule.endDate))
+      .limit(1)
       .get();
-    return NextResponse.json(
-      {
-        error: anyPublished
-          ? "Your published schedule has no upcoming shifts in the next 14 days. Publish a schedule that covers the coming two weeks (generate drafts and apply one so it has assignments), then start practice mode again."
-          : "Publish a schedule first — practice mode uses your real roster and your live published schedule.",
-      },
-      { status: 422 },
-    );
+    const error = !latestPublished
+      ? "Publish a schedule first — practice mode uses your real roster and your live published schedule."
+      : daysFromToday(latestPublished.endDate) < 0
+        ? `Your published schedule ended on ${latestPublished.endDate}, so no schedule covers today. Create and publish the next period, then start practice mode.`
+        : "Your published schedule has no upcoming shifts in the next 14 days. Publish a schedule that covers the coming two weeks (generate drafts and apply one so it has assignments), then start practice mode again.";
+    return NextResponse.json({ error }, { status: 422 });
   }
 
   // Leave A: a staff member with an assigned shift 2-6 days out (inside the

@@ -36,6 +36,7 @@ interface DashboardData {
   openShiftsCount: number;
   prnMissingCount: number;
   scheduleEndingSoon: { daysUntilEnd: number } | null;
+  scheduleEnded: { endDate: string; daysAgo: number } | null;
   recentAudit: {
     id: string;
     action: string;
@@ -277,6 +278,15 @@ export default function DashboardPage() {
           {
             href: "/schedule",
             text: `Current schedule ends in ${data.scheduleEndingSoon.daysUntilEnd} day${data.scheduleEndingSoon.daysUntilEnd !== 1 ? "s" : ""} — create next period`,
+            urgent: true,
+          },
+        ]
+      : []),
+    ...(data.scheduleEnded
+      ? [
+          {
+            href: "/schedule",
+            text: `No schedule covers today — the last one ended ${data.scheduleEnded.endDate}. Create and publish the next period`,
             urgent: true,
           },
         ]
