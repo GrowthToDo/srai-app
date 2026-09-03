@@ -16,7 +16,7 @@ export function SignedOutCard() {
         <CardHeader>
           <h1
             className="text-xl font-semibold"
-            style={{ fontFamily: "var(--font-fraunces)" }}
+            style={{ fontFamily: "var(--font-heading)" }}
           >
             You&apos;re not signed in
           </h1>

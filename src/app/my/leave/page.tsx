@@ -219,7 +219,7 @@ export default function LeavePage() {
       <div className="flex items-center justify-between">
         <h1
           className="text-xl font-semibold"
-          style={{ fontFamily: "var(--font-fraunces)" }}
+          style={{ fontFamily: "var(--font-heading)" }}
         >
           Time off
         </h1>

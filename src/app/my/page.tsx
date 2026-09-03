@@ -240,7 +240,7 @@ export default function MySchedulePage() {
     <div className="space-y-5">
       <h1
         className="text-xl font-semibold"
-        style={{ fontFamily: "var(--font-fraunces)" }}
+        style={{ fontFamily: "var(--font-heading)" }}
       >
         My schedule
       </h1>

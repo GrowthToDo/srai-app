@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { format, startOfMonth, endOfMonth, addMonths, subMonths } from "date-fns";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  subMonths,
+} from "date-fns";
 import { Repeat } from "lucide-react";
 import { useSession } from "@/lib/auth/use-session";
 import { useToast } from "@/components/ui/toast";
@@ -145,15 +151,20 @@ export default function SwapsPage() {
   // dialog (a 2-month forward window is plenty for a swap request).
   const fetchMyShifts = useCallback(async () => {
     if (!staffId) return;
-    const rangeStart = format(startOfMonth(subMonths(new Date(), 0)), "yyyy-MM-dd");
+    const rangeStart = format(
+      startOfMonth(subMonths(new Date(), 0)),
+      "yyyy-MM-dd",
+    );
     const rangeEnd = format(endOfMonth(addMonths(new Date(), 2)), "yyyy-MM-dd");
     try {
       const res = await fetch(
-        `/api/staff/${staffId}/schedule?startDate=${rangeStart}&endDate=${rangeEnd}`
+        `/api/staff/${staffId}/schedule?startDate=${rangeStart}&endDate=${rangeEnd}`,
       );
       const data = await res.json();
       const days: NurseDay[] = Array.isArray(data.days) ? data.days : [];
-      setMyShifts(upcomingShifts(days, todayStr).filter((s) => s.status === "assigned"));
+      setMyShifts(
+        upcomingShifts(days, todayStr).filter((s) => s.status === "assigned"),
+      );
     } catch {
       setMyShifts([]);
     }
@@ -178,11 +189,10 @@ export default function SwapsPage() {
     (async () => {
       try {
         const res = await fetch(
-          `/api/my/swap-options?assignmentId=${chosenAssignment}`
+          `/api/my/swap-options?assignmentId=${chosenAssignment}`,
         );
         const data = await res.json();
-        if (!cancelled)
-          setColleagues(Array.isArray(data) ? data : []);
+        if (!cancelled) setColleagues(Array.isArray(data) ? data : []);
       } catch {
         if (!cancelled) setColleagues([]);
       } finally {
@@ -196,19 +206,19 @@ export default function SwapsPage() {
 
   const selectedColleague = useMemo(
     () => colleagues.find((c) => c.staffId === swapWith) ?? null,
-    [colleagues, swapWith]
+    [colleagues, swapWith],
   );
 
   const needsResponse = useMemo(
     () =>
       swaps.filter(
-        (s) => s.status === "pending" && s.targetStaffId === staffId
+        (s) => s.status === "pending" && s.targetStaffId === staffId,
       ),
-    [swaps, staffId]
+    [swaps, staffId],
   );
   const myRequests = useMemo(
     () => swaps.filter((s) => s.requestingStaffId === staffId),
-    [swaps, staffId]
+    [swaps, staffId],
   );
 
   async function respond(swapId: string, action: "accept" | "decline") {
@@ -235,7 +245,7 @@ export default function SwapsPage() {
               description: "Sent to your manager for final approval.",
               variant: "success",
             }
-          : { title: "Swap declined", variant: "default" }
+          : { title: "Swap declined", variant: "default" },
       );
       await fetchSwaps();
     } catch {
@@ -326,7 +336,7 @@ export default function SwapsPage() {
       <div className="flex items-center justify-between">
         <h1
           className="text-xl font-semibold"
-          style={{ fontFamily: "var(--font-fraunces)" }}
+          style={{ fontFamily: "var(--font-heading)" }}
         >
           Shift swaps
         </h1>
@@ -356,7 +366,9 @@ export default function SwapsPage() {
                 <Card key={s.id}>
                   <CardContent className="space-y-3 p-4">
                     <div className="text-sm">
-                      <span className="font-medium">{fullName(s.requestor)}</span>{" "}
+                      <span className="font-medium">
+                        {fullName(s.requestor)}
+                      </span>{" "}
                       wants to swap.
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-sm">
@@ -547,8 +559,9 @@ export default function SwapsPage() {
                     <SelectContent>
                       {selectedColleague.assignments.map((a) => (
                         <SelectItem key={a.assignmentId} value={a.assignmentId}>
-                          {format(new Date(a.date + "T00:00:00"), "EEE, MMM d")} ·{" "}
-                          {shiftTypeLabel(a.shiftType)} {a.startTime}–{a.endTime}
+                          {format(new Date(a.date + "T00:00:00"), "EEE, MMM d")}{" "}
+                          · {shiftTypeLabel(a.shiftType)} {a.startTime}–
+                          {a.endTime}
                         </SelectItem>
                       ))}
                     </SelectContent>

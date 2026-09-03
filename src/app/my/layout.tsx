@@ -1,6 +1,6 @@
 "use client";
 
-import { APP_NAME } from "@/lib/brand";
+import { BrandMark } from "@/components/brand-mark";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -65,12 +65,7 @@ export default function NurseLayout({
       {/* Top bar */}
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
         <div className="flex flex-col leading-tight">
-          <span
-            className="text-base font-semibold text-primary"
-            style={{ fontFamily: "var(--font-fraunces)" }}
-          >
-            {APP_NAME}
-          </span>
+          <BrandMark size={22} className="text-base" />
           {firstName && (
             <span className="text-xs text-muted-foreground">
               Hi, {firstName}

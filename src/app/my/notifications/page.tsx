@@ -88,7 +88,7 @@ export default function NotificationsPage() {
     <div className="space-y-5">
       <h1
         className="text-xl font-semibold"
-        style={{ fontFamily: "var(--font-fraunces)" }}
+        style={{ fontFamily: "var(--font-heading)" }}
       >
         Notifications
       </h1>
@@ -118,7 +118,11 @@ export default function NotificationsPage() {
                       router.push(n.href);
                     }
                   }}
-                  className={clickable ? "cursor-pointer transition-colors hover:bg-accent/40" : undefined}
+                  className={
+                    clickable
+                      ? "cursor-pointer transition-colors hover:bg-accent/40"
+                      : undefined
+                  }
                 >
                   <CardContent className="flex items-start gap-3 p-4">
                     <span

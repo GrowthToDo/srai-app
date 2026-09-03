@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface SplitViewProps {
-  leftContent: React.ReactNode
-  rightContent: React.ReactNode
-  leftTitle: string
-  rightTitle: string
-  onClose?: () => void
+  leftContent: React.ReactNode;
+  rightContent: React.ReactNode;
+  leftTitle: string;
+  rightTitle: string;
+  onClose?: () => void;
 }
 
 export function SplitView({
@@ -19,24 +19,24 @@ export function SplitView({
   rightTitle,
   onClose,
 }: SplitViewProps) {
-  const [dividerPosition, setDividerPosition] = useState(50)
-  const [isDragging, setIsDragging] = useState(false)
+  const [dividerPosition, setDividerPosition] = useState(50);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleMouseDown = () => {
-    setIsDragging(true)
-  }
+    setIsDragging(true);
+  };
 
   const handleMouseUp = () => {
-    setIsDragging(false)
-  }
+    setIsDragging(false);
+  };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return
+    if (!isDragging) return;
 
-    const container = e.currentTarget.getBoundingClientRect()
-    const percentage = ((e.clientX - container.left) / container.width) * 100
-    setDividerPosition(Math.max(20, Math.min(80, percentage)))
-  }
+    const container = e.currentTarget.getBoundingClientRect();
+    const percentage = ((e.clientX - container.left) / container.width) * 100;
+    setDividerPosition(Math.max(20, Math.min(80, percentage)));
+  };
 
   return (
     <div
@@ -51,19 +51,28 @@ export function SplitView({
           <h2 className="text-lg font-semibold">Split View Comparison</h2>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-[#2d5a4a]" />
+              <div className="w-3 h-3 rounded-full bg-[#0b1f3a]" />
               <span>{leftTitle}</span>
             </div>
             <span>vs</span>
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-[#c68a4e]" />
+              <div className="w-3 h-3 rounded-full bg-[#f5a623]" />
               <span>{rightTitle}</span>
             </div>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
           </svg>
         </Button>
       </div>
@@ -72,12 +81,12 @@ export function SplitView({
       <div className="flex h-[calc(100vh-3.5rem)]">
         {/* Left panel */}
         <div
-          className="overflow-auto border-r-2 border-[#2d5a4a]/30 bg-gradient-to-br from-[#2d5a4a]/[0.06] to-transparent"
+          className="overflow-auto border-r-2 border-[#0b1f3a]/30 bg-gradient-to-br from-[#0b1f3a]/[0.06] to-transparent"
           style={{ width: `${dividerPosition}%` }}
         >
           <div className="p-6">
             <div className="mb-4 flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#2d5a4a]" />
+              <div className="w-3 h-3 rounded-full bg-[#0b1f3a]" />
               <h3 className="font-semibold">{leftTitle}</h3>
             </div>
             {leftContent}
@@ -88,25 +97,35 @@ export function SplitView({
         <div
           className={cn(
             "relative w-1 cursor-col-resize bg-border hover:bg-primary transition-colors group",
-            isDragging && "bg-primary"
+            isDragging && "bg-primary",
           )}
           onMouseDown={handleMouseDown}
         >
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-12 rounded-lg bg-card border-2 border-primary shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary">
-              <path d="M8 3v18"/><path d="M16 3v18"/>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="text-primary"
+            >
+              <path d="M8 3v18" />
+              <path d="M16 3v18" />
             </svg>
           </div>
         </div>
 
         {/* Right panel */}
         <div
-          className="overflow-auto border-l-2 border-[#c68a4e]/40 bg-gradient-to-bl from-[#c68a4e]/[0.10] to-transparent"
+          className="overflow-auto border-l-2 border-[#f5a623]/40 bg-gradient-to-bl from-[#f5a623]/[0.10] to-transparent"
           style={{ width: `${100 - dividerPosition}%` }}
         >
           <div className="p-6">
             <div className="mb-4 flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#c68a4e]" />
+              <div className="w-3 h-3 rounded-full bg-[#f5a623]" />
               <h3 className="font-semibold">{rightTitle}</h3>
             </div>
             {rightContent}
@@ -120,21 +139,23 @@ export function SplitView({
           <span>Drag divider to resize</span>
           <span className="text-primary">|</span>
           <div className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px]">ESC</kbd>
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px]">
+              ESC
+            </kbd>
             <span>to exit</span>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export function useSplitView() {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false);
 
-  const open = () => setIsOpen(true)
-  const close = () => setIsOpen(false)
-  const toggle = () => setIsOpen(!isOpen)
+  const open = () => setIsOpen(true);
+  const close = () => setIsOpen(false);
+  const toggle = () => setIsOpen(!isOpen);
 
-  return { isOpen, open, close, toggle }
+  return { isOpen, open, close, toggle };
 }

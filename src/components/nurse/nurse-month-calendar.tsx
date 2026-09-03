@@ -152,9 +152,9 @@ export function NurseMonthCalendar({
                       s.status === "called_out" || s.status === "cancelled"
                         ? "bg-destructive/80 line-through"
                         : s.shiftType === "day"
-                          ? "bg-[#2d5a4a]"
+                          ? "bg-[#f5a623]"
                           : s.shiftType === "night"
-                            ? "bg-[#1a2332]"
+                            ? "bg-[#0b1f3a]"
                             : "bg-gray-500",
                     )}
                   >
@@ -173,10 +173,10 @@ export function NurseMonthCalendar({
 
       <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="size-2.5 rounded bg-[#2d5a4a]" /> Day
+          <span className="size-2.5 rounded bg-[#f5a623]" /> Day
         </span>
         <span className="flex items-center gap-1">
-          <span className="size-2.5 rounded bg-[#1a2332]" /> Night
+          <span className="size-2.5 rounded bg-[#0b1f3a]" /> Night
         </span>
         <span className="flex items-center gap-1">
           <span className="size-2.5 rounded bg-green-500" /> Leave

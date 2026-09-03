@@ -1,6 +1,6 @@
 import { APP_NAME } from "@/lib/brand";
 import type { Metadata, Viewport } from "next";
-import { Inter, Fraunces } from "next/font/google";
+import { Inter, Manrope } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
 import { Providers } from "@/components/layout/providers";
@@ -14,10 +14,10 @@ const inter = Inter({
   weight: ["400", "500", "600", "700"],
 });
 
-// Display serif for headings — matches the marketing site's wordmark + headings.
-const fraunces = Fraunces({
+// Heading face — matches the marketing site's wordmark + headings (Manrope).
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-fraunces",
+  variable: "--font-manrope",
   display: "swap",
   weight: ["400", "500", "600"],
   style: ["normal"],
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 // (putting themeColor in metadata warns at build). theme_color also lives in
 // the webmanifest; both are kept in sync at #2D5A4A (forest green).
 export const viewport: Viewport = {
-  themeColor: "#2D5A4A",
+  themeColor: "#0B1F3A",
 };
 
 export default function RootLayout({
@@ -44,7 +44,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${fraunces.variable} font-sans antialiased`}
+        className={`${inter.variable} ${manrope.variable} font-sans antialiased`}
       >
         <Providers>
           <ChunkErrorRecovery />

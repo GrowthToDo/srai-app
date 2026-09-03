@@ -54,7 +54,7 @@ export default function MyAvailabilityPage() {
         Array.isArray(data) && data.length > 0 ? data[0] : null;
       setExisting(mine);
       setSelected(
-        (mine?.availableDates ?? []).map((d) => new Date(d + "T00:00:00"))
+        (mine?.availableDates ?? []).map((d) => new Date(d + "T00:00:00")),
       );
     } catch {
       setExisting(null);
@@ -69,7 +69,7 @@ export default function MyAvailabilityPage() {
 
   const selectedIso = useMemo(
     () => serializeAvailableDates(selected.map(toIsoDate)),
-    [selected]
+    [selected],
   );
 
   async function save() {
@@ -144,7 +144,7 @@ export default function MyAvailabilityPage() {
       <div className="flex items-center justify-between">
         <h1
           className="text-xl font-semibold"
-          style={{ fontFamily: "var(--font-fraunces)" }}
+          style={{ fontFamily: "var(--font-heading)" }}
         >
           My availability
         </h1>
@@ -211,11 +211,7 @@ export default function MyAvailabilityPage() {
           <p className="w-full rounded-md bg-accent/60 p-2 text-xs text-muted-foreground">
             Your manager can only schedule you on days you mark available.
           </p>
-          <Button
-            onClick={save}
-            disabled={submitting}
-            className="w-full"
-          >
+          <Button onClick={save} disabled={submitting} className="w-full">
             {submitting
               ? "Saving…"
               : `Save availability (${selectedIso.length} day${selectedIso.length === 1 ? "" : "s"})`}

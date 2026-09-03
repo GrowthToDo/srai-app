@@ -3,7 +3,7 @@
   "short_name": "SRAI",
   "start_url": "/my",
   "display": "standalone",
-  "background_color": "#FAF7F2",
-  "theme_color": "#2D5A4A",
+  "background_color": "#F7F8FA",
+  "theme_color": "#0B1F3A",
   "icons": []
 }

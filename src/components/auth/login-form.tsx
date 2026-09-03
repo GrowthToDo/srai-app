@@ -1,6 +1,6 @@
 "use client";
 
-import { APP_NAME } from "@/lib/brand";
+import { BrandMark } from "@/components/brand-mark";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -65,11 +65,8 @@ function LoginFormInner({
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <h1
-          className="text-2xl font-semibold"
-          style={{ fontFamily: "var(--font-fraunces)" }}
-        >
-          {APP_NAME}
+        <h1 className="text-2xl font-semibold">
+          <BrandMark size={30} />
         </h1>
         <p className="text-muted-foreground text-sm">
           Sign in to your scheduling workspace.

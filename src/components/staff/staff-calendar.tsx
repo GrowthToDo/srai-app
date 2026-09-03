@@ -4,7 +4,17 @@ import { useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isSameMonth, isWeekend } from "date-fns";
+import {
+  format,
+  parseISO,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  addMonths,
+  subMonths,
+  isSameMonth,
+  isWeekend,
+} from "date-fns";
 
 interface ShiftData {
   assignmentId: string;
@@ -69,7 +79,7 @@ export function StaffCalendar({ staffId, defaultDate }: StaffCalendarProps) {
 
     try {
       const res = await fetch(
-        `/api/staff/${staffId}/schedule?startDate=${startDate}&endDate=${endDate}`
+        `/api/staff/${staffId}/schedule?startDate=${startDate}&endDate=${endDate}`,
       );
       const data = await res.json();
       setDays(data.days || []);
@@ -141,7 +151,10 @@ export function StaffCalendar({ staffId, defaultDate }: StaffCalendarProps) {
           <div className="grid grid-cols-7">
             {/* Empty cells for days before the first of the month */}
             {Array.from({ length: firstDayOfWeek }).map((_, i) => (
-              <div key={`empty-${i}`} className="min-h-[80px] border-t border-r bg-muted/30" />
+              <div
+                key={`empty-${i}`}
+                className="min-h-[80px] border-t border-r bg-muted/30"
+              />
             ))}
 
             {/* Actual days */}
@@ -166,11 +179,11 @@ export function StaffCalendar({ staffId, defaultDate }: StaffCalendarProps) {
       {/* Legend */}
       <div className="mt-4 flex flex-wrap gap-3 text-xs">
         <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded bg-[#2d5a4a]" />
+          <div className="h-3 w-3 rounded bg-[#f5a623]" />
           <span>Day Shift</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded bg-[#1a2332]" />
+          <div className="h-3 w-3 rounded bg-[#0b1f3a]" />
           <span>Night Shift</span>
         </div>
         <div className="flex items-center gap-1">
@@ -211,7 +224,8 @@ function DayCell({
 
       {hasLeave && (
         <div className="mb-1 rounded bg-green-100 px-1 py-0.5 text-[10px] text-green-800">
-          {LEAVE_TYPE_LABELS[dayData.leave!.leaveType] || dayData.leave!.leaveType}
+          {LEAVE_TYPE_LABELS[dayData.leave!.leaveType] ||
+            dayData.leave!.leaveType}
         </div>
       )}
 
@@ -221,17 +235,33 @@ function DayCell({
             <div
               key={shift.assignmentId}
               className={`rounded px-1 py-0.5 text-[10px] text-white ${
-                shift.shiftType === "day" ? "bg-[#2d5a4a]" :
-                shift.shiftType === "night" ? "bg-[#1a2332]" : "bg-gray-500"
+                shift.shiftType === "day"
+                  ? "bg-[#f5a623]"
+                  : shift.shiftType === "night"
+                    ? "bg-[#0b1f3a]"
+                    : "bg-gray-500"
               }`}
             >
               <div className="flex items-center gap-0.5">
-                <span>{shift.shiftType === "day" ? "D" : shift.shiftType === "night" ? "N" : "E"}</span>
+                <span>
+                  {shift.shiftType === "day"
+                    ? "D"
+                    : shift.shiftType === "night"
+                      ? "N"
+                      : "E"}
+                </span>
                 {shift.isChargeNurse && (
-                  <Badge variant="secondary" className="h-3 px-0.5 text-[8px]">C</Badge>
+                  <Badge variant="secondary" className="h-3 px-0.5 text-[8px]">
+                    C
+                  </Badge>
                 )}
                 {shift.isOvertime && (
-                  <Badge variant="destructive" className="h-3 px-0.5 text-[8px]">OT</Badge>
+                  <Badge
+                    variant="destructive"
+                    className="h-3 px-0.5 text-[8px]"
+                  >
+                    OT
+                  </Badge>
                 )}
               </div>
               <div className="truncate text-[9px] opacity-90">{shift.unit}</div>

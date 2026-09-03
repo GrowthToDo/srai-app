@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.10.4] - 2026-09-03
+
+### Changed
+
+- **India edition retheme: the app now matches simplerosterai.com.** The
+  marketing site's navy + saffron system replaces the forest-green "warm
+  editorial" palette: ink navy `#0b1f3a` is the primary (buttons, links,
+  active nav), saffron `#f5a623` is the accent and focus ring, teal `#2aa79b`
+  is the success tone, and the page ground is the site's cool off-white
+  `#f7f8fa`. Dark mode is the site's navy dark sections with saffron primary.
+  Headings switch from Fraunces to Manrope (700, -0.02em) to match the site's
+  wordmark and headings; body stays Inter.
+- **Brand mark.** New `src/components/brand-mark.tsx` renders the site's
+  "duty wheel" logo (three saffron arcs) beside the product name; used in the
+  sidebar, the login card, and the nurse-portal header. Product name comes
+  from `src/lib/brand.ts` (`SimpleRosterAI`, added in the previous commit).
+- **Shift colours** follow the new system: day shifts saffron, night shifts
+  navy (staff calendar, nurse month calendar); scenario split view uses navy
+  vs saffron for the two variants. Manifest `theme_color` / `background_color`
+  and the viewport theme colour updated to navy / off-white.
+
+Files: `src/app/globals.css`, `src/app/layout.tsx`,
+`src/components/brand-mark.tsx` (new), `src/components/layout/sidebar.tsx`,
+`src/components/auth/login-form.tsx`, `src/app/my/layout.tsx`,
+`src/components/staff/staff-calendar.tsx`,
+`src/components/nurse/nurse-month-calendar.tsx`,
+`src/components/schedule/split-view.tsx`, `public/manifest.webmanifest`,
+plus `var(--font-fraunces)` → `var(--font-heading)` in the nurse-portal pages.
+
 ## [1.10.3] - 2026-08-31
 
 ### Fixed
