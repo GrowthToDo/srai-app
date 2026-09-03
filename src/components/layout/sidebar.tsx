@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_NAME } from "@/lib/brand";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -449,7 +450,7 @@ export function Sidebar() {
         )}
       >
         <div className="flex h-14 items-center border-b px-4">
-          <h1 className="text-lg font-semibold">SimpleScheduleAI</h1>
+          <h1 className="text-lg font-semibold">{APP_NAME}</h1>
         </div>
         <nav className="flex-1 overflow-y-auto p-2">
           {navGroups.map((group, groupIndex) => (

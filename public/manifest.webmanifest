@@ -1,6 +1,6 @@
 {
-  "name": "SimpleScheduleAI",
-  "short_name": "SSAI",
+  "name": "SimpleRosterAI",
+  "short_name": "SRAI",
   "start_url": "/my",
   "display": "standalone",
   "background_color": "#FAF7F2",

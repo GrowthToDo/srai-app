@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_NAME } from "@/lib/brand";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -46,8 +47,7 @@ function LoginFormInner({
         return;
       }
       const data = (await res.json()) as { role: "manager" | "nurse" };
-      const destination =
-        data.role === "manager" ? next ?? "/" : "/my";
+      const destination = data.role === "manager" ? (next ?? "/") : "/my";
       router.push(destination);
     } catch {
       setError("Something went wrong. Please try again.");
@@ -69,7 +69,7 @@ function LoginFormInner({
           className="text-2xl font-semibold"
           style={{ fontFamily: "var(--font-fraunces)" }}
         >
-          SimpleScheduleAI
+          {APP_NAME}
         </h1>
         <p className="text-muted-foreground text-sm">
           Sign in to your scheduling workspace.

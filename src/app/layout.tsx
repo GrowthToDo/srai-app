@@ -1,3 +1,4 @@
+import { APP_NAME } from "@/lib/brand";
 import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
@@ -23,7 +24,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "SimpleScheduleAI",
+  title: APP_NAME,
   description: "ICU Nurse Scheduling for Critical Access Hospitals",
   manifest: "/manifest.webmanifest",
 };

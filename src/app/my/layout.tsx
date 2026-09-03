@@ -1,8 +1,15 @@
 "use client";
 
+import { APP_NAME } from "@/lib/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarCheck, CalendarDays, LogOut, Plane, Repeat } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarDays,
+  LogOut,
+  Plane,
+  Repeat,
+} from "lucide-react";
 import { useSession } from "@/lib/auth/use-session";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/nurse/notification-bell";
@@ -62,7 +69,7 @@ export default function NurseLayout({
             className="text-base font-semibold text-primary"
             style={{ fontFamily: "var(--font-fraunces)" }}
           >
-            SimpleScheduleAI
+            {APP_NAME}
           </span>
           {firstName && (
             <span className="text-xs text-muted-foreground">
@@ -102,7 +109,7 @@ export default function NurseLayout({
                 "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
                 active
                   ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <Icon className={cn("size-5", active && "text-primary")} />
